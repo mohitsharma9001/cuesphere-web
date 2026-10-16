@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Compass, IndianRupee, LogOut, Menu, Search, ShieldCheck, Trophy } from "lucide-react";
+import { Bell, Compass, IndianRupee, LogOut, Megaphone, Menu, Search, ShieldCheck, Trophy } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { NAV_LINKS } from "@/lib/constants";
@@ -148,6 +148,12 @@ export function Navbar() {
                   <span className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
                     <Compass className="size-4" />
                     Browse Clubs
+                  </span>
+                </SheetClose>
+                <SheetClose nativeButton={false} render={<Link href="/for-clubs" />}>
+                  <span className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-primary hover:bg-white/5">
+                    <Megaphone className="size-4" />
+                    CueSphere for Clubs
                   </span>
                 </SheetClose>
                 <SheetClose nativeButton={false} render={<Link href="/tournaments" />}>
