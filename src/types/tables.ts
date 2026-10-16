@@ -12,12 +12,21 @@ export interface ClubTable {
   active: boolean;
 }
 
+export type SplitMode = "loser" | "split" | "custom";
+
+/** Someone at the table — linked to their CueSphere account when staff picked one. */
+export interface LineupPlayer {
+  name: string;
+  playerId: string | null;
+}
+
 export interface TableSession {
   id: string;
   clubId: string;
   tableId: string;
   /** Everyone at the table. */
   players: string[];
+  lineup: LineupPlayer[];
   /** Display line, e.g. "Rohan v Sameer". */
   playerName: string;
   playerId: string | null;
@@ -36,18 +45,54 @@ export interface TableCharge {
   id: string;
   sessionId: string;
   payerName: string;
+  payerPlayerId: string | null;
+  splitMode: SplitMode | null;
   amount: number;
   paid: boolean;
   paymentMethod: PaymentMethod | null;
   paidAt: string | null;
+  remindedAt: string | null;
+  createdAt: string;
 }
 
-/** A share still owed, with enough context to recognise it at the counter. */
+/** A share with the game it came from: when, which table, against whom, how long. */
 export interface OutstandingCharge extends TableCharge {
   tableId: string;
+  tableNumber: number | null;
   sessionLabel: string;
+  /** Everyone else at the table. */
+  opponents: string[];
   minutes: number;
+  startedAt: string | null;
   endedAt: string | null;
+}
+
+/** Everything one person owes a club. Keyed by account, or by name for walk-ins. */
+export interface PayerDues {
+  key: string;
+  name: string;
+  playerId: string | null;
+  mobile: string | null;
+  total: number;
+  charges: OutstandingCharge[];
+  lastRemindedAt: string | null;
+}
+
+export interface IncomeReport {
+  from: string;
+  to: string;
+  collected: number;
+  byMethod: Record<PaymentMethod, number>;
+  /** Collected per IST day, oldest first. */
+  days: { date: string; amount: number }[];
+  payments: OutstandingCharge[];
+  sessions: number;
+  minutes: number;
+}
+
+/** Key that groups one payer's dues: their account if linked, else their name. */
+export function payerKey(c: { payerPlayerId: string | null; payerName: string }): string {
+  return c.payerPlayerId ? `p:${c.payerPlayerId}` : `n:${c.payerName.trim().toLowerCase()}`;
 }
 
 export interface TableBooking {

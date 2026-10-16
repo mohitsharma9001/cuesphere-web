@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Clock, IndianRupee, Loader2, Play, Plus, Square, UserX, X } from "lucide-react";
+import { BadgeCheck, Check, ChevronRight, Clock, IndianRupee, Loader2, Play, Plus, Square, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,8 @@ import {
   stopTableAction,
 } from "@/app/actions/table-actions";
 import { cn } from "@/lib/utils";
+import { clubPath } from "@/lib/club-path";
+import { PlayerNameInput } from "@/features/tables/components/player-name-input";
 import {
   billFor,
   formatDuration,
@@ -25,6 +28,7 @@ import {
   splitEqually,
   type ClubTable,
   type DaySummary,
+  type LineupPlayer,
   type OutstandingCharge,
   type PaymentMethod,
   type TableBooking,
@@ -70,7 +74,10 @@ function time(iso: string) {
 function BillSplitter({ clubSlug, session, onDone }: { clubSlug: string; session: TableSession; onDone: () => void }) {
   const router = useRouter();
   const amount = session.amount ?? 0;
-  const [names, setNames] = React.useState<string[]>(session.players.length > 0 ? session.players : ["Player 1", "Player 2"]);
+  const [people, setPeople] = React.useState<LineupPlayer[]>(
+    session.lineup.length > 0 ? session.lineup : [{ name: "Player 1", playerId: null }, { name: "Player 2", playerId: null }]
+  );
+  const names = people.map((x) => x.name);
   const [mode, setMode] = React.useState<"loser" | "split" | "custom">("loser");
   const [loser, setLoser] = React.useState(0);
   const [custom, setCustom] = React.useState<string[]>(() => splitEqually(amount, names.length).map(String));
@@ -78,15 +85,15 @@ function BillSplitter({ clubSlug, session, onDone }: { clubSlug: string; session
 
   const shares =
     mode === "loser"
-      ? [{ payerName: names[loser] ?? "Player", amount }]
+      ? [{ payerName: people[loser]?.name ?? "Player", payerPlayerId: people[loser]?.playerId ?? null, amount }]
       : mode === "split"
-        ? splitEqually(amount, names.length).map((a, i) => ({ payerName: names[i], amount: a }))
-        : names.map((n, i) => ({ payerName: n, amount: Number(custom[i] || 0) }));
+        ? splitEqually(amount, people.length).map((a, i) => ({ payerName: people[i].name, payerPlayerId: people[i].playerId, amount: a }))
+        : people.map((x, i) => ({ payerName: x.name, payerPlayerId: x.playerId, amount: Number(custom[i] || 0) }));
   const total = shares.reduce((t, x) => t + x.amount, 0);
 
   async function save() {
     setBusy(true);
-    const r = await settleBillAction(clubSlug, session.id, shares);
+    const r = await settleBillAction(clubSlug, session.id, shares, mode);
     setBusy(false);
     if (!r.success) return toast.error(r.error);
     onDone();
@@ -141,21 +148,26 @@ function BillSplitter({ clubSlug, session, onDone }: { clubSlug: string; session
                 {loser === i ? <Check className="size-4" /> : null}
               </button>
             ) : null}
-            <Input
-              className="h-9"
-              value={n}
-              onChange={(e) => setNames(names.map((x, j) => (j === i ? e.target.value : x)))}
-            />
+            <div className="relative min-w-0 flex-1">
+              <Input
+                className="h-9 pr-8"
+                value={n}
+                onChange={(e) => setPeople(people.map((x, j) => (j === i ? { name: e.target.value, playerId: x.playerId } : x)))}
+              />
+              {people[i]?.playerId ? (
+                <BadgeCheck className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-success" />
+              ) : null}
+            </div>
             {mode === "custom" ? (
               <Input
                 className="h-9 w-24"
                 inputMode="numeric"
                 value={custom[i] ?? ""}
-                onChange={(e) => setCustom(names.map((_, j) => (j === i ? e.target.value.replace(/\D/g, "") : custom[j] ?? "")))}
+                onChange={(e) => setCustom(people.map((_, j) => (j === i ? e.target.value.replace(/\D/g, "") : custom[j] ?? "")))}
               />
             ) : (
               <span className="w-20 shrink-0 text-right text-sm font-semibold text-foreground">
-                {formatRupees(shares.find((x) => x.payerName === n)?.amount ?? 0)}
+                {formatRupees(mode === "loser" ? (loser === i ? amount : 0) : (shares[i]?.amount ?? 0))}
               </span>
             )}
           </div>
@@ -165,7 +177,7 @@ function BillSplitter({ clubSlug, session, onDone }: { clubSlug: string; session
             type="button"
             className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
             onClick={() => {
-              setNames([...names, `Player ${names.length + 1}`]);
+              setPeople([...people, { name: `Player ${people.length + 1}`, playerId: null }]);
               setCustom([...custom, "0"]);
             }}
           >
@@ -209,7 +221,8 @@ function ChargeRow({ clubSlug, charge, tableNumber }: { clubSlug: string; charge
         <div className="min-w-0">
           <p className="truncate font-semibold text-foreground">{charge.payerName}</p>
           <p className="truncate text-xs text-muted-foreground">
-            Table {tableNumber ?? "?"} · {charge.sessionLabel} · {formatDuration(charge.minutes)}
+            Table {charge.tableNumber ?? tableNumber ?? "?"}
+            {charge.opponents.length > 0 ? ` · vs ${charge.opponents.join(", ")}` : ""} · {formatDuration(charge.minutes)}
             {charge.endedAt ? ` · ${when(charge.endedAt)}` : ""}
           </p>
         </div>
@@ -243,17 +256,18 @@ function TableCard({
 }) {
   const router = useRouter();
   const [starting, setStarting] = React.useState(false);
-  const [players, setPlayers] = React.useState(["", ""]);
+  const blank: LineupPlayer = { name: "", playerId: null };
+  const [players, setPlayers] = React.useState<LineupPlayer[]>([blank, blank]);
   const [busy, setBusy] = React.useState(false);
   const [stopped, setStopped] = React.useState<TableSession | null>(null);
 
   async function start() {
     setBusy(true);
-    const r = await startTableAction(clubSlug, table.id, { players });
+    const r = await startTableAction(clubSlug, table.id, { lineup: players });
     setBusy(false);
     if (!r.success) return toast.error(r.error);
     setStarting(false);
-    setPlayers(["", ""]);
+    setPlayers([blank, blank]);
     router.refresh();
   }
 
@@ -311,21 +325,21 @@ function TableCard({
       ) : starting ? (
         <div className="space-y-2">
           {players.map((p, i) => (
-            <Input
+            <PlayerNameInput
               key={i}
+              clubSlug={clubSlug}
               autoFocus={i === 0}
-              className="h-11"
-              placeholder={`Player ${i + 1}`}
+              placeholder={`Player ${i + 1} (name or member ID)`}
               value={p}
-              onChange={(e) => setPlayers(players.map((x, j) => (j === i ? e.target.value : x)))}
-              onKeyDown={(e) => e.key === "Enter" && start()}
+              onChange={(next) => setPlayers(players.map((x, j) => (j === i ? next : x)))}
+              onEnter={start}
             />
           ))}
           {players.length < 8 ? (
             <button
               type="button"
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
-              onClick={() => setPlayers([...players, ""])}
+              onClick={() => setPlayers([...players, blank])}
             >
               <Plus className="size-3.5" /> Add player
             </button>
@@ -432,7 +446,7 @@ function BookingRow({ clubSlug, booking, tables }: { clubSlug: string; booking: 
                 run(
                   () =>
                     startTableAction(clubSlug, booking.tableId!, {
-                      players: [booking.playerName],
+                      lineup: [{ name: booking.playerName, playerId: booking.playerId }],
                       playerId: booking.playerId,
                       bookingId: booking.id,
                     }),
@@ -486,25 +500,39 @@ export function TablesBoard({
   return (
     <div className="space-y-8">
       <section className="space-y-2">
-        <div className="rounded-2xl border border-primary/40 bg-primary/10 px-4 py-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-primary">Today&apos;s income</p>
-          <p className="font-heading text-4xl font-bold text-foreground">{formatRupees(summary.collected)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Cash {formatRupees(summary.byMethod.cash)} · UPI {formatRupees(summary.byMethod.upi)} · Card{" "}
-            {formatRupees(summary.byMethod.card)}
-          </p>
-        </div>
+        <Link
+          href={clubPath(clubSlug, "/admin/tables/income")}
+          className="flex items-center justify-between gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-4 transition-colors hover:bg-primary/15"
+        >
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-primary">Today&apos;s income</p>
+            <p className="font-heading text-4xl font-bold text-foreground">{formatRupees(summary.collected)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Cash {formatRupees(summary.byMethod.cash)} · UPI {formatRupees(summary.byMethod.upi)} · Card{" "}
+              {formatRupees(summary.byMethod.card)}
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+            Week, month… <ChevronRight className="size-4" />
+          </span>
+        </Link>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            ["Playing now", `${summary.playing} table${summary.playing === 1 ? "" : "s"}`],
-            ["Free", `${summary.free} table${summary.free === 1 ? "" : "s"}`],
-            ["Booked later today", String(summary.bookedToday)],
-            ["To collect", formatRupees(summary.unpaid)],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-2xl border border-border bg-card px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+            ["Playing now", `${summary.playing} table${summary.playing === 1 ? "" : "s"}`, "#tables"],
+            ["Free", `${summary.free} table${summary.free === 1 ? "" : "s"}`, "#tables"],
+            ["Booked later today", String(summary.bookedToday), "#bookings"],
+            ["To collect", formatRupees(summary.unpaid), clubPath(clubSlug, "/admin/tables/dues")],
+          ].map(([label, value, href]) => (
+            <Link
+              key={label}
+              href={href}
+              className="rounded-2xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/60"
+            >
+              <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {label} <ChevronRight className="size-3.5" />
+              </p>
               <p className="mt-1 truncate font-heading text-lg font-bold text-foreground">{value}</p>
-            </div>
+            </Link>
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
@@ -521,7 +549,7 @@ export function TablesBoard({
         </section>
       ) : null}
 
-      <section className="space-y-3">
+      <section id="tables" className="scroll-mt-20 space-y-3">
         <h2 className="font-heading text-lg font-bold text-foreground">Tables</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {tables.map((t) => (
@@ -539,9 +567,14 @@ export function TablesBoard({
 
       {unsplit.length > 0 || charges.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="flex items-center gap-2 font-heading text-lg font-bold text-foreground">
-            <IndianRupee className="size-4 text-primary" /> To collect
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 font-heading text-lg font-bold text-foreground">
+              <IndianRupee className="size-4 text-primary" /> To collect
+            </h2>
+            <Link href={clubPath(clubSlug, "/admin/tables/dues")} className="text-sm font-semibold text-primary hover:underline">
+              Dues by player
+            </Link>
+          </div>
           {unsplit.map((s) =>
             splitting === s.id ? (
               <div key={s.id} className="rounded-2xl border border-border bg-card p-3">
@@ -571,7 +604,7 @@ export function TablesBoard({
       ) : null}
 
       {confirmed.length > 0 ? (
-        <section className="space-y-2">
+        <section id="bookings" className="scroll-mt-20 space-y-2">
           <h2 className="font-heading text-lg font-bold text-foreground">Upcoming bookings</h2>
           {confirmed.map((b) => (
             <BookingRow key={b.id} clubSlug={clubSlug} booking={b} tables={tables} />

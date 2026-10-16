@@ -8,8 +8,12 @@ import { clubPath } from "@/lib/club-path";
 import { getClubBySlug, getMembership, listMembershipsForClub } from "@/services/club-service";
 import { getProfileById, getProfileByUserId } from "@/services/profile-service";
 import { sendPushToUsers } from "@/services/push-notification-service";
+import { searchPlayers } from "@/services/friendly-service";
 import {
+  collectCharges,
   createBookingRequest,
+  listDuesByPayer,
+  markChargesReminded,
   findBookingClash,
   getBooking,
   listClubTables,
@@ -21,7 +25,7 @@ import {
   stopSession,
 } from "@/services/table-service";
 import { isScorekeeperOnly, isStaffRole } from "@/types/club";
-import type { PaymentMethod, TableSession } from "@/types/tables";
+import { formatRupees, type LineupPlayer, type PaymentMethod, type SplitMode, type TableSession } from "@/types/tables";
 
 type Fail = { success: false; error: string };
 
@@ -83,15 +87,22 @@ export async function saveTableAction(
 export async function startTableAction(
   clubSlug: string,
   tableId: string,
-  input: { players: string[]; playerId?: string | null; bookingId?: string | null }
+  input: { lineup: LineupPlayer[]; playerId?: string | null; bookingId?: string | null }
 ): Promise<{ success: true } | Fail> {
   const check = await requireTableStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
   const table = (await listClubTables(check.club.id)).find((t) => t.id === tableId);
   if (!table) return { success: false, error: "Table not found." };
-  const players = input.players.map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 8);
+  // Keep only real accounts for linked players; anyone else is a walk-in name.
+  const lineup: LineupPlayer[] = [];
+  for (const x of input.lineup.slice(0, 8)) {
+    const name = x.name.trim().slice(0, 40);
+    if (!name) continue;
+    const linked = x.playerId ? await getProfileById(x.playerId) : undefined;
+    lineup.push({ name: linked?.fullName || name, playerId: linked ? linked.id : null });
+  }
   const { error } = await startSession(check.club.id, table, {
-    players,
+    lineup,
     playerId: input.playerId ?? null,
     bookingId: input.bookingId ?? null,
     startedBy: check.userId,
@@ -114,15 +125,21 @@ export async function stopTableAction(clubSlug: string, sessionId: string): Prom
 export async function settleBillAction(
   clubSlug: string,
   sessionId: string,
-  shares: { payerName: string; amount: number }[]
+  shares: { payerName: string; payerPlayerId: string | null; amount: number }[],
+  mode: SplitMode
 ): Promise<{ success: true } | Fail> {
   const check = await requireTableStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
+  if (!["loser", "split", "custom"].includes(mode)) return { success: false, error: "Choose who pays." };
   const clean = shares
-    .map((x) => ({ payerName: x.payerName.trim().slice(0, 40) || "Player", amount: Math.round(x.amount) }))
+    .map((x) => ({
+      payerName: x.payerName.trim().slice(0, 40) || "Player",
+      payerPlayerId: x.payerPlayerId || null,
+      amount: Math.round(x.amount),
+    }))
     .filter((x) => Number.isFinite(x.amount) && x.amount >= 0);
   if (clean.length === 0 || clean.length > 8) return { success: false, error: "Add who is paying." };
-  const { error } = await settleSession(check.club.id, sessionId, clean);
+  const { error } = await settleSession(check.club.id, sessionId, clean, mode);
   if (error) return { success: false, error };
   refresh(clubSlug);
   return { success: true };
@@ -135,6 +152,51 @@ export async function markChargePaidAction(clubSlug: string, chargeId: string, m
   const { error } = await markChargePaid(check.club.id, chargeId, method);
   if (error) return { success: false, error };
   refresh(clubSlug);
+  return { success: true };
+}
+
+// ── Staff: players and dues ─────────────────────────────────────────────────
+
+/** Registered players matching a name, member ID or mobile — to link a game to their account. */
+export async function searchTablePlayersAction(clubSlug: string, query: string) {
+  const check = await requireTableStaff(clubSlug);
+  if (!check.ok) return [];
+  return searchPlayers(query, "00000000-0000-0000-0000-000000000000");
+}
+
+/** Collect some or all of a person's dues in one go. */
+export async function collectDuesAction(
+  clubSlug: string,
+  chargeIds: string[],
+  method: PaymentMethod
+): Promise<{ success: true } | Fail> {
+  const check = await requireTableStaff(clubSlug);
+  if (!check.ok) return { success: false, error: check.error };
+  if (!["cash", "upi", "card"].includes(method)) return { success: false, error: "Choose Cash, UPI or Card." };
+  if (chargeIds.length === 0 || chargeIds.length > 200) return { success: false, error: "Nothing selected." };
+  const { error } = await collectCharges(check.club.id, chargeIds, method);
+  if (error) return { success: false, error };
+  refresh(clubSlug);
+  revalidatePath(clubPath(clubSlug, "/admin/tables/dues"));
+  return { success: true };
+}
+
+/** Sends a "please clear your dues" notification to a player with an account. */
+export async function sendDueReminderAction(clubSlug: string, payerKeyValue: string): Promise<{ success: true } | Fail> {
+  const check = await requireTableStaff(clubSlug);
+  if (!check.ok) return { success: false, error: check.error };
+  const dues = (await listDuesByPayer(check.club.id)).find((d) => d.key === payerKeyValue);
+  if (!dues) return { success: false, error: "No dues for this player." };
+  if (!dues.playerId) return { success: false, error: "This player isn't on CueSphere — use WhatsApp instead." };
+  const profile = await getProfileById(dues.playerId);
+  if (!profile?.userId) return { success: false, error: "Player not found." };
+  await sendPushToUsers([profile.userId], {
+    title: `${formatRupees(dues.total)} due at ${check.club.name}`,
+    body: `For ${dues.charges.length} game${dues.charges.length === 1 ? "" : "s"}. Tap to see the details.`,
+    url: clubPath(check.club.slug, "/account/dues"),
+  });
+  await markChargesReminded(check.club.id, dues.charges.map((c) => c.id));
+  revalidatePath(clubPath(clubSlug, "/admin/tables/dues"));
   return { success: true };
 }
 
