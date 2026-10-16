@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // CueSphere on Cloudflare Workers (via OpenNext). Runs in the Cloudflare
+  // data centre nearest each visitor — Mumbai/Bengaluru for Indian users.
+  "name": "cuesphere",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Keeps esbuild from adding __name() to functions Next serializes into inline scripts.
+  "keep_names": false,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "cuesphere"
+    }
+  ],
+  "observability": { "enabled": true }
+}
