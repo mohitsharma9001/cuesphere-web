@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import {
   BarChart3,
   Bell,
@@ -26,6 +27,24 @@ export const metadata: Metadata = {
   description:
     "Table timers and billing, dues, tournaments, live scores, TV scoreboards and YouTube streaming — the complete operating system for snooker clubs. Free while we launch.",
 };
+
+/** A real snooker table (no people) under a dark wash, so the text on top stays readable. */
+function SnookerBackdrop({ strong = false }: { strong?: boolean }) {
+  return (
+    <>
+      {/* Club lights, green cloth and the white ball — wide on computers, tall on phones. */}
+      <Image src="/media/hero-table-wide.jpg" alt="" fill priority={!strong} sizes="100vw" className="object-cover max-lg:hidden" />
+      <Image src="/media/hero-table-tall.jpg" alt="" fill priority={!strong} sizes="100vw" className="object-cover object-[center_70%] lg:hidden" />
+      <div
+        className={
+          strong
+            ? "absolute inset-0 bg-background/80"
+            : "absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/40 max-lg:bg-gradient-to-b max-lg:from-background/75 max-lg:via-background/45 max-lg:to-background/80"
+        }
+      />
+    </>
+  );
+}
 
 const WHATSAPP = `https://wa.me/917904551660?text=${encodeURIComponent(
   "Hi! I run a snooker club and I'd like to know more about CueSphere."
@@ -72,8 +91,9 @@ export default function ForClubsPage() {
       <PlatformHeader />
       <main className="flex-1">
         {/* Hero */}
-        <section className="border-b border-border felt-texture">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_minmax(0,380px)] lg:py-16 lg:px-8">
+        <section className="relative overflow-hidden border-b border-border">
+          <SnookerBackdrop />
+          <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_minmax(0,380px)] lg:py-16 lg:px-8">
             <div className="space-y-5">
               <span className="text-xs font-bold uppercase tracking-[0.22em] text-primary">CueSphere for clubs</span>
               <h1 className="font-heading text-4xl font-bold leading-[1.05] text-foreground sm:text-5xl">
@@ -225,8 +245,9 @@ export default function ForClubsPage() {
         </section>
 
         {/* Final call */}
-        <section className="felt-texture">
-          <div className="mx-auto max-w-3xl space-y-5 px-4 py-14 text-center sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden">
+          <SnookerBackdrop strong />
+          <div className="relative mx-auto max-w-3xl space-y-5 px-4 py-14 text-center sm:px-6 lg:px-8">
             <h2 className="font-heading text-3xl font-bold text-foreground">Bring your club onto CueSphere</h2>
             <p className="text-muted-foreground">Free while we launch. Takes two minutes. Questions? Message us on WhatsApp.</p>
             <div className="flex flex-wrap justify-center gap-3">
