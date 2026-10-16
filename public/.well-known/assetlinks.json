@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.netlify.cuesphere.twa",
+        "sha256_cert_fingerprints": ["93:EC:E7:2A:75:C1:E5:5A:6B:80:B7:D2:D6:72:5E:CB:82:B3:3B:EE:F2:0A:8A:53:59:77:23:AB:14:9F:FC:3D"]
+      }
+    }]
