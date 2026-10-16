@@ -23,8 +23,9 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Refresh the session if expired — required for Server Components.
-  await supabase.auth.getUser();
+  // Refresh the session if expired — required for Server Components. getClaims()
+  // checks the token locally (ES256 keys) instead of calling Supabase Auth each time.
+  await supabase.auth.getClaims();
 
   return response;
 }
