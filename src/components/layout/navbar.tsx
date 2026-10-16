@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Bell, Compass, Menu, Search, Trophy } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Bell, Compass, IndianRupee, LogOut, Menu, Search, ShieldCheck, Trophy } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { NAV_LINKS } from "@/lib/constants";
@@ -22,6 +22,8 @@ import { NavbarUserMenu } from "@/components/layout/navbar-user-menu";
 import { useViewer } from "@/components/shared/viewer-provider";
 import { useClub } from "@/components/shared/club-provider";
 import { useClubViewer } from "@/components/shared/club-viewer-provider";
+import { logoutAction } from "@/app/actions/auth-actions";
+import { isStaffRole } from "@/types/club";
 
 function NavLink({
   href,
@@ -58,8 +60,15 @@ export function Navbar() {
   const viewer = useViewer();
   const { basePath } = useClub();
   const clubViewer = useClubViewer();
+  const router = useRouter();
   const isOwner = clubViewer.membership?.role === "club_admin";
   const homeHref = isOwner ? basePath : "/";
+
+  async function handleLogout() {
+    await logoutAction();
+    router.push(basePath);
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-50 glass pt-[env(safe-area-inset-top)]">
@@ -164,6 +173,27 @@ export function Navbar() {
                       {viewer.isProfileComplete
                         ? "My Profile"
                         : `Complete Profile (${viewer.profileCompletionPercent}%)`}
+                    </SheetClose>
+                    {isStaffRole(clubViewer.membership?.role) ? (
+                      <SheetClose
+                        nativeButton={false}
+                        render={<Button variant="outline" nativeButton={false} render={<Link href={`${basePath}/admin`} />} />}
+                      >
+                        <ShieldCheck className="size-4" /> Club Admin
+                      </SheetClose>
+                    ) : null}
+                    <SheetClose
+                      nativeButton={false}
+                      render={<Button variant="outline" nativeButton={false} render={<Link href={`${basePath}/account/dues`} />} />}
+                    >
+                      <IndianRupee className="size-4" /> My dues
+                    </SheetClose>
+                    <p className="mt-2 truncate px-1 text-xs text-muted-foreground">{viewer.user.email}</p>
+                    <SheetClose
+                      nativeButton={false}
+                      render={<Button variant="ghost" className="text-destructive" onClick={handleLogout} />}
+                    >
+                      <LogOut className="size-4" /> Logout
                     </SheetClose>
                   </>
                 ) : (
