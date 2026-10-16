@@ -192,3 +192,9 @@ export async function notifyFriendlyStarted(input: {
     url: `/matches/${input.matchId}`,
   });
 }
+
+/** Sends one notification to every device of these users. */
+export async function sendPushToUsers(userIds: string[], payload: NotificationPayload) {
+  if (userIds.length === 0) return;
+  await sendToSubscriptions(await listPushSubscriptionsForUsers(userIds), payload);
+}

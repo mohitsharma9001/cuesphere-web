@@ -1,6 +1,6 @@
 "use client";
 
-import { Image as ImageIcon, LayoutDashboard, Radio, Settings, Trophy } from "lucide-react";
+import { LayoutDashboard, Radio, Settings, Timer, Trophy } from "lucide-react";
 
 import { MobileTabBar, type MobileTab } from "@/components/layout/mobile-tab-bar";
 
@@ -10,9 +10,10 @@ export function AdminTabBar({ basePath, scorekeeperOnly }: { basePath: string; s
     ? [{ href: `${basePath}/live`, label: "Live Scoring", icon: Radio }]
     : [
         { href: basePath, label: "Overview", icon: LayoutDashboard, exact: true },
+        // Gallery stays in the desktop sidebar and on the Settings page.
+        { href: `${basePath}/tables`, label: "Tables", icon: Timer },
         { href: `${basePath}/tournaments`, label: "Tournaments", icon: Trophy },
         { href: `${basePath}/live`, label: "Live", icon: Radio },
-        { href: `${basePath}/gallery`, label: "Gallery", icon: ImageIcon },
         { href: `${basePath}/settings`, label: "Settings", icon: Settings },
       ];
 

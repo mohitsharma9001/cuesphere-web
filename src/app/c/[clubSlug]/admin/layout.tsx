@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Trophy, Settings, Radio, Image as ImageIcon, Home, Tv } from "lucide-react";
+import { LayoutDashboard, Trophy, Settings, Radio, Image as ImageIcon, Home, Tv, Timer } from "lucide-react";
 
 import { getClubViewer } from "@/lib/auth/get-club-viewer";
 import { getSession } from "@/lib/auth/session";
@@ -40,6 +40,7 @@ export default async function ClubAdminLayout({
     ? [{ href: `${basePath}/live`, label: "Live Scoring", icon: Radio }]
     : [
         { href: basePath, label: "Overview", icon: LayoutDashboard },
+        { href: `${basePath}/tables`, label: "Tables", icon: Timer },
         { href: `${basePath}/tournaments`, label: "Tournaments", icon: Trophy },
         { href: `${basePath}/live`, label: "Live Scoring", icon: Radio },
         { href: `${basePath}/screens`, label: "TV & Stream", icon: Tv },

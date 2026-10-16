@@ -15,11 +15,14 @@ export function NewClubHome({
   tournaments,
   memberCount,
   totalTournamentCount,
+  afterHero,
 }: {
   club: Club;
   tournaments: ClubTournamentCardData[];
   memberCount: number;
   totalTournamentCount: number;
+  /** Shown right under the welcome banner (e.g. live table status). */
+  afterHero?: React.ReactNode;
 }) {
   return (
     <>
@@ -61,6 +64,8 @@ export function NewClubHome({
           </Reveal>
         </div>
       </section>
+
+      {afterHero}
 
       <section className="border-b border-border bg-card/40">
         <Reveal className="mx-auto flex max-w-7xl items-center justify-center gap-10 px-4 py-6 sm:px-6 lg:px-8">

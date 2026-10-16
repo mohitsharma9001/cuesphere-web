@@ -9,6 +9,8 @@ import { listClubTournaments, countRegisteredForClubTournament } from "@/service
 import { getSession } from "@/lib/auth/session";
 import { getProfileByUserId } from "@/services/profile-service";
 import { getRegistrationForPlayer } from "@/services/registration-service";
+import { getPublicTableStatus } from "@/services/table-service";
+import { TablesNow } from "@/features/tables/components/tables-now";
 
 export default async function Home({
   params,
@@ -44,9 +46,10 @@ export default async function Home({
   const session = await getSession();
   const profile = session ? await getProfileByUserId(session.id) : undefined;
 
-  const [tournaments, members] = await Promise.all([
+  const [tournaments, members, tableStatus] = await Promise.all([
     listClubTournaments(club.id),
     listMembershipsForClub(club.id),
+    getPublicTableStatus(club.id),
   ]);
 
   const upcoming = tournaments.filter((t) => t.status !== "completed");
@@ -66,5 +69,13 @@ export default async function Home({
     })
   );
 
-  return <NewClubHome club={club} tournaments={cardData} memberCount={members.length} totalTournamentCount={tournaments.length} />;
+  return (
+    <NewClubHome
+      club={club}
+      tournaments={cardData}
+      memberCount={members.length}
+      totalTournamentCount={tournaments.length}
+      afterHero={<TablesNow clubSlug={club.slug} tables={tableStatus} />}
+    />
+  );
 }
