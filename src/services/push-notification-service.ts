@@ -85,3 +85,110 @@ export async function notifyFriendRegistered(
     url: `/c/${clubSlug}/tournaments/${tournamentSlug}`,
   });
 }
+
+/** When a match goes live, tells the friends and followers of both players so
+ * they can watch — the "your friend is playing now" nudge. */
+export async function notifyMatchStarted(input: {
+  player1UserId: string | null;
+  player2UserId: string | null;
+  player1ProfileId: string;
+  player2ProfileId: string;
+  player1Name: string;
+  player2Name: string;
+  tableNumber: number;
+  clubName: string;
+  clubSlug: string;
+  matchId: string;
+}) {
+  const { listFriendUserIds } = await import("@/services/friendship-service");
+  const { listFollowerUserIds } = await import("@/services/follow-service");
+
+  const playerUserIds = [input.player1UserId, input.player2UserId].filter((id): id is string => !!id);
+  const [friendLists, followers] = await Promise.all([
+    Promise.all(playerUserIds.map((id) => listFriendUserIds(id))),
+    listFollowerUserIds([input.player1ProfileId, input.player2ProfileId]),
+  ]);
+  const recipients = [...new Set([...friendLists.flat(), ...followers])].filter((id) => !playerUserIds.includes(id));
+  if (recipients.length === 0) return;
+
+  const subscriptions = await listPushSubscriptionsForUsers(recipients);
+  await sendToSubscriptions(subscriptions, {
+    title: `${input.player1Name} v ${input.player2Name} is live`,
+    body: `Now playing on Table ${input.tableNumber} at ${input.clubName}. Tap to watch.`,
+    url: `/c/${input.clubSlug}/live/${input.matchId}`,
+  });
+}
+
+async function userIdForProfile(profileId: string): Promise<string | null> {
+  const { getProfileById } = await import("@/services/profile-service");
+  return (await getProfileById(profileId))?.userId ?? null;
+}
+
+async function sendToProfile(profileId: string, payload: NotificationPayload) {
+  const userId = await userIdForProfile(profileId);
+  if (!userId) return;
+  await sendToSubscriptions(await listPushSubscriptionsForUsers([userId]), payload);
+}
+
+/** "Rohan challenged you to a best-of-3 friendly." */
+export async function notifyFriendlyChallenge(input: {
+  matchId: string;
+  opponentProfileId: string;
+  challengerName: string;
+  bestOf: number;
+}) {
+  await sendToProfile(input.opponentProfileId, {
+    title: `${input.challengerName} challenged you`,
+    body: `A best-of-${input.bestOf} friendly on CueSphere. Tap to accept.`,
+    url: `/play/${input.matchId}`,
+  });
+}
+
+export async function notifyFriendlyAccepted(input: { matchId: string; challengerProfileId: string; opponentName: string }) {
+  await sendToProfile(input.challengerProfileId, {
+    title: `${input.opponentName} accepted your challenge`,
+    body: "Start the match and score it from your phone.",
+    url: `/play/${input.matchId}`,
+  });
+}
+
+export async function notifyFriendlyResultToConfirm(input: {
+  matchId: string;
+  opponentProfileId: string;
+  submitterName: string;
+}) {
+  await sendToProfile(input.opponentProfileId, {
+    title: "Confirm your friendly result",
+    body: `${input.submitterName} entered the final score. Tap to confirm it.`,
+    url: `/play/${input.matchId}`,
+  });
+}
+
+/** A friendly went live: friends and followers of both players can watch. */
+export async function notifyFriendlyStarted(input: {
+  matchId: string;
+  player1ProfileId: string;
+  player2ProfileId: string;
+  player1Name: string;
+  player2Name: string;
+  venueName: string | null;
+}) {
+  const { listFriendUserIds } = await import("@/services/friendship-service");
+  const { listFollowerUserIds } = await import("@/services/follow-service");
+
+  const playerUserIds = (
+    await Promise.all([userIdForProfile(input.player1ProfileId), userIdForProfile(input.player2ProfileId)])
+  ).filter((id): id is string => !!id);
+  const [friendLists, followers] = await Promise.all([
+    Promise.all(playerUserIds.map((id) => listFriendUserIds(id))),
+    listFollowerUserIds([input.player1ProfileId, input.player2ProfileId]),
+  ]);
+  const recipients = [...new Set([...friendLists.flat(), ...followers])].filter((id) => !playerUserIds.includes(id));
+  if (recipients.length === 0) return;
+
+  await sendToSubscriptions(await listPushSubscriptionsForUsers(recipients), {
+    title: `${input.player1Name} v ${input.player2Name} is live`,
+    body: input.venueName ? `A friendly at ${input.venueName}. Tap to watch.` : "A friendly match. Tap to watch.",
+    url: `/matches/${input.matchId}`,
+  });
+}

@@ -101,7 +101,7 @@ export function FrameByFramePanel({
       toast.error(result.error);
       return;
     }
-    toast.success("Match finished — player stats updated.");
+    toast.success(match.kind === "friendly" ? "Result sent — your opponent confirms it." : "Match finished — player stats updated.");
     router.refresh();
   }
 

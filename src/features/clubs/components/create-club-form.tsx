@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClubAction } from "@/app/actions/club-actions";
+import { LocationPicker } from "@/features/locations/components/location-picker";
+import type { City, IndianState } from "@/services/location-service";
 
 const schema = z.object({
   name: z.string().min(2, "Enter your club's name."),
@@ -22,9 +24,19 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function CreateClubForm({ isLoggedIn }: { isLoggedIn: boolean }) {
+export function CreateClubForm({
+  isLoggedIn,
+  states,
+  cities,
+}: {
+  isLoggedIn: boolean;
+  states: IndianState[];
+  cities: City[];
+}) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [location, setLocation] = React.useState({ stateCode: "", cityId: "" });
+  const [locationError, setLocationError] = React.useState<string>();
 
   const {
     register,
@@ -37,6 +49,10 @@ export function CreateClubForm({ isLoggedIn }: { isLoggedIn: boolean }) {
   });
 
   async function onSubmit(values: FormValues) {
+    if (!location.stateCode || !location.cityId) {
+      setLocationError("Choose your club's state and city.");
+      return;
+    }
     if (!isLoggedIn) {
       if (!values.email || !/^\S+@\S+\.\S+$/.test(values.email)) {
         setError("email", { message: "Enter a valid email address." });
@@ -49,7 +65,7 @@ export function CreateClubForm({ isLoggedIn }: { isLoggedIn: boolean }) {
     }
 
     setIsSubmitting(true);
-    const result = await createClubAction(values);
+    const result = await createClubAction({ ...values, ...location });
     setIsSubmitting(false);
 
     if (!result.success) {
@@ -72,6 +88,17 @@ export function CreateClubForm({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Label htmlFor="tagline">Tagline (Optional)</Label>
         <Input id="tagline" placeholder="e.g. Where Every Frame Counts" {...register("tagline")} />
       </div>
+      <LocationPicker
+        states={states}
+        cities={cities}
+        stateCode={location.stateCode}
+        cityId={location.cityId}
+        onChange={(next) => {
+          setLocation(next);
+          setLocationError(undefined);
+        }}
+        error={locationError}
+      />
 
       {!isLoggedIn ? (
         <>

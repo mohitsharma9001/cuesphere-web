@@ -3,8 +3,11 @@
 import * as React from "react";
 import type { FrameScore } from "@/types/match";
 import type { TableBoard, TableMatch } from "@/features/table-display/types";
+import { useLiveSignal } from "@/lib/use-live-signal";
+import { liveTableChannel } from "@/lib/live-channels";
 
-const POLL_MS = 2000;
+// Realtime signals make updates instant; this regular check is only a fallback.
+const POLL_MS = 5000;
 const FRAME_BANNER_MS = 8000;
 const RESULT_MS = 10 * 60 * 1000;
 const INTRO_MS = 12000;
@@ -37,11 +40,28 @@ export function useTableBoard(initial: TableBoard, clubSlug: string, table: numb
   );
   const completedAt = React.useRef<{ id: string; at: number } | null>(null);
 
+  const wakeRef = React.useRef<() => void>(() => {});
+  // The server signals this table the moment the referee records a shot.
+  useLiveSignal(liveTableChannel(initial.club.id, table), () => wakeRef.current(), 250);
+
   React.useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    let inFlight = false;
+    let again = false;
+
+    /** Fetch now (realtime signal), or right after the current fetch if one is running. */
+    wakeRef.current = () => {
+      if (inFlight) {
+        again = true;
+        return;
+      }
+      clearTimeout(timer);
+      tick();
+    };
 
     async function tick() {
+      inFlight = true;
       try {
         const follow = followRef.current ? `?follow=${encodeURIComponent(followRef.current)}` : "";
         const res = await fetch(`/api/table-board/${clubSlug}/${table}${follow}`, { cache: "no-store" });
@@ -82,7 +102,14 @@ export function useTableBoard(initial: TableBoard, clubSlug: string, table: numb
       } catch {
         // Network blip — keep showing the last state and try again.
       }
-      if (!cancelled) timer = setTimeout(tick, POLL_MS);
+      inFlight = false;
+      if (cancelled) return;
+      if (again) {
+        again = false;
+        tick();
+        return;
+      }
+      timer = setTimeout(tick, POLL_MS);
     }
 
     timer = setTimeout(tick, POLL_MS);

@@ -22,10 +22,10 @@ export interface ClubViewer {
  * Component pages can't read the layout's React Context — cache() collapses
  * those into a single set of queries instead of running them twice. */
 export const getClubViewer = cache(async (clubSlug: string): Promise<ClubViewer | null> => {
-  const club = await getClubBySlug(clubSlug);
+  // Independent lookups — run together instead of one after the other.
+  const [club, user] = await Promise.all([getClubBySlug(clubSlug), getSession()]);
   if (!club) return null;
 
-  const user = await getSession();
   if (!user) {
     return { club, membership: null, isStaff: false, unreadNotifications: 0, activeRegistrationId: null, currentMatchId: null };
   }

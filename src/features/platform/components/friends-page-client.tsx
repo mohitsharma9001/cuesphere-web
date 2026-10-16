@@ -15,7 +15,7 @@ function Section({ title, entries }: { title: string; entries: PlayerDirectoryEn
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title} ({entries.length})
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {entries.map((entry) => (
           <div key={entry.profile.id} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
             <Link href={`/players/${entry.profile.id}`} className="flex min-w-0 flex-1 items-center gap-3">

@@ -7,6 +7,7 @@ import { isScorekeeperOnly } from "@/types/club";
 import { UpdateClubSettingsForm } from "@/features/club-admin/components/update-club-settings-form";
 import { ClubLogoUpload } from "@/features/club-admin/components/club-logo-upload";
 import { ClubCoverUpload } from "@/features/club-admin/components/club-cover-upload";
+import { listActiveStates, listCities } from "@/services/location-service";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -22,6 +23,8 @@ export default async function ClubAdminSettingsPage({
     redirect(clubPath(clubSlug, "/admin/live"));
   }
 
+  const [states, cities] = await Promise.all([listActiveStates(), listCities()]);
+
   return (
     <div>
       <h1 className="font-heading text-2xl font-bold text-foreground">Settings</h1>
@@ -30,7 +33,7 @@ export default async function ClubAdminSettingsPage({
       <div className="mt-8 max-w-lg space-y-8">
         <ClubLogoUpload clubSlug={clubSlug} initialLogoUrl={clubViewer.club.logoUrl} />
         <ClubCoverUpload clubSlug={clubSlug} initialCoverUrl={clubViewer.club.heroBannerUrl} />
-        <UpdateClubSettingsForm clubSlug={clubSlug} club={clubViewer.club} />
+        <UpdateClubSettingsForm clubSlug={clubSlug} club={clubViewer.club} states={states} cities={cities} />
       </div>
     </div>
   );

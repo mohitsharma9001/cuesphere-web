@@ -1,5 +1,8 @@
 "use server";
 
+import { after } from "next/server";
+
+import { signalMatchChanged } from "@/lib/live-signal";
 import { getSession } from "@/lib/auth/session";
 import { getClubBySlug, getMembership } from "@/services/club-service";
 import { isStaffRole, isScorekeeperOnly } from "@/types/club";
@@ -25,9 +28,9 @@ import {
 } from "@/services/match-service";
 import { getRegisteredPlayerIds } from "@/services/registration-service";
 import type { MatchStatus } from "@/types/match";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getProfileById, getProfileByUserId } from "@/services/profile-service";
 import { getProfileCompletion } from "@/types/player-profile";
-import { notifyNewTournament, notifyFriendRegistered } from "@/services/push-notification-service";
+import { notifyNewTournament, notifyFriendRegistered, notifyMatchStarted } from "@/services/push-notification-service";
 import { listFriendUserIds } from "@/services/friendship-service";
 import type { ClubTournament, PrizeBreakdownItem } from "@/types/club-tournament";
 
@@ -188,6 +191,28 @@ export async function updateMatchStatusAction(
   }
 
   await updateMatchStatus(matchId, status);
+  // Start/End Match: table TVs and live viewers switch screens straight away.
+  after(() => signalMatchChanged(match).catch(() => {}));
+
+  if (status === "live" && match.status !== "live") {
+    // Don't hold up the referee: friends and followers are notified after the response.
+    after(async () => {
+      const [p1, p2] = await Promise.all([getProfileById(match.player1Id), getProfileById(match.player2Id)]);
+      await notifyMatchStarted({
+        player1UserId: p1?.userId ?? null,
+        player2UserId: p2?.userId ?? null,
+        player1ProfileId: match.player1Id,
+        player2ProfileId: match.player2Id,
+        player1Name: match.player1Name,
+        player2Name: match.player2Name,
+        tableNumber: match.tableNumber,
+        clubName: club.name,
+        clubSlug: club.slug,
+        matchId: match.id,
+      }).catch(() => {});
+    });
+  }
+
   return { success: true as const };
 }
 

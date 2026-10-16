@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getRegisteredPlayerIds } from "@/services/registration-service";
 import type { PlayerProfile } from "@/types/player-profile";
 import type { Friendship } from "@/types/friendship";
+import { playerPhotoUrl } from "@/lib/player-photo";
 
 interface FriendshipRow {
   id: string;
@@ -52,7 +53,7 @@ function profileFromRow(row: ProfileRow): PlayerProfile {
     city: row.city,
     primaryClubId: row.primary_club_id,
     emergencyContact: row.emergency_contact,
-    profilePhotoUrl: row.profile_photo_url,
+    profilePhotoUrl: playerPhotoUrl(row.id, row.profile_photo_url),
     preferredCue: row.preferred_cue,
     createdAt: row.created_at,
   };

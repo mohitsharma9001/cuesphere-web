@@ -29,7 +29,7 @@ export function PairTvForm({ clubSlug, tableCount }: { clubSlug: string; tableCo
       toast.error(result.error);
       return;
     }
-    toast.success(`TV paired with Table ${table}`);
+    toast.success(table === 0 ? "TV paired — it rotates through every live table" : `TV paired with Table ${table}`);
     setCode("");
     router.refresh();
   }
@@ -65,6 +65,7 @@ export function PairTvForm({ clubSlug, tableCount }: { clubSlug: string; tableCo
                 Table {i + 1}
               </option>
             ))}
+            <option value={0}>All tables (rotate)</option>
           </select>
         </div>
         <Button type="submit" className="h-11" disabled={busy || code.replace(/[^A-Z0-9]/gi, "").length < 6}>

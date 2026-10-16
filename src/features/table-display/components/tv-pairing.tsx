@@ -5,7 +5,8 @@ import Image from "next/image";
 
 import { ScaledStage } from "@/features/table-display/components/scaled-stage";
 import { TvScoreboard } from "@/features/table-display/components/tv-scoreboard";
-import type { TableBoard } from "@/features/table-display/types";
+import { RotatingTvScoreboard } from "@/features/table-display/components/rotating-tv-scoreboard";
+import type { ClubBoard, TableBoard } from "@/features/table-display/types";
 
 const TOKEN_KEY = "cuesphere-tv-token";
 const UNPAIRED_POLL_MS = 3000;
@@ -15,6 +16,8 @@ type State =
   | { kind: "loading" }
   | { kind: "code"; code: string; expiresAt: string | null }
   | { kind: "paired"; clubSlug: string; table: number; board: TableBoard }
+  /** Paired to "All tables" (table 0): rotates through every live table. */
+  | { kind: "rotating"; clubSlug: string; board: ClubBoard }
   | { kind: "error" };
 
 function readToken() {
@@ -129,11 +132,19 @@ export function TvPairing() {
           if (status.paired) {
             const current = pairedRef.current;
             if (!current || current.clubSlug !== status.clubSlug || current.table !== status.table) {
-              const boardRes = await fetch(`/api/table-board/${status.clubSlug}/${status.table}`, { cache: "no-store" });
+              const url =
+                status.table === 0
+                  ? `/api/club-board/${status.clubSlug}`
+                  : `/api/table-board/${status.clubSlug}/${status.table}`;
+              const boardRes = await fetch(url, { cache: "no-store" });
               if (boardRes.ok && !cancelled) {
-                const board = (await boardRes.json()) as TableBoard;
                 pairedRef.current = { clubSlug: status.clubSlug, table: status.table };
-                setState({ kind: "paired", clubSlug: status.clubSlug, table: status.table, board });
+                if (status.table === 0) {
+                  setState({ kind: "rotating", clubSlug: status.clubSlug, board: (await boardRes.json()) as ClubBoard });
+                } else {
+                  const board = (await boardRes.json()) as TableBoard;
+                  setState({ kind: "paired", clubSlug: status.clubSlug, table: status.table, board });
+                }
               }
             }
           } else {
@@ -154,6 +165,9 @@ export function TvPairing() {
     };
   }, []);
 
+  if (state.kind === "rotating") {
+    return <RotatingTvScoreboard key={`${state.clubSlug}:all`} initial={state.board} clubSlug={state.clubSlug} />;
+  }
   if (state.kind === "paired") {
     return (
       <TvScoreboard

@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { updateClubSettingsAction } from "@/app/actions/club-settings-actions";
 import type { Club } from "@/types/club";
+import { LocationPicker } from "@/features/locations/components/location-picker";
+import type { City, IndianState } from "@/services/location-service";
 
 const schema = z.object({
   name: z.string().min(2, "Enter a club name."),
@@ -34,8 +36,20 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function UpdateClubSettingsForm({ clubSlug, club }: { clubSlug: string; club: Club }) {
+export function UpdateClubSettingsForm({
+  clubSlug,
+  club,
+  states,
+  cities,
+}: {
+  clubSlug: string;
+  club: Club;
+  states: IndianState[];
+  cities: City[];
+}) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [location, setLocation] = React.useState({ stateCode: club.stateCode ?? "", cityId: club.cityId ?? "" });
+  const [locationError, setLocationError] = React.useState<string>();
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -59,6 +73,10 @@ export function UpdateClubSettingsForm({ clubSlug, club }: { clubSlug: string; c
   });
 
   async function onSubmit(values: FormValues) {
+    if (!location.stateCode || !location.cityId) {
+      setLocationError("Choose your club's state and city.");
+      return;
+    }
     setIsSubmitting(true);
     const result = await updateClubSettingsAction(clubSlug, {
       name: values.name,
@@ -68,6 +86,8 @@ export function UpdateClubSettingsForm({ clubSlug, club }: { clubSlug: string; c
       phone: values.phone,
       email: values.email,
       googleMapsUrl: values.googleMapsUrl,
+      stateCode: location.stateCode,
+      cityId: location.cityId,
       socialLinks: {
         facebook: values.facebook ?? "",
         twitter: values.twitter ?? "",
@@ -114,6 +134,17 @@ export function UpdateClubSettingsForm({ clubSlug, club }: { clubSlug: string; c
 
       <div className="space-y-4 border-t border-border pt-5">
         <h3 className="text-sm font-semibold text-foreground">Contact Details</h3>
+        <LocationPicker
+          states={states}
+          cities={cities}
+          stateCode={location.stateCode}
+          cityId={location.cityId}
+          onChange={(next) => {
+            setLocation(next);
+            setLocationError(undefined);
+          }}
+          error={locationError}
+        />
         <div className="space-y-2">
           <Label htmlFor="address">Address</Label>
           <Input id="address" placeholder="12C Snooker Street, Your City - 400001" {...register("address")} />

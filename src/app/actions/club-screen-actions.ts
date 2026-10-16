@@ -36,6 +36,11 @@ function validTable(table: number) {
   return Number.isInteger(table) && table >= 1 && table <= 99;
 }
 
+/** A TV can also be set to 0: every live table in turn. */
+function validTvTable(table: number) {
+  return table === 0 || validTable(table);
+}
+
 function done(clubSlug: string): Result {
   revalidatePath(clubPath(clubSlug, "/admin/screens"));
   return { success: true };
@@ -44,7 +49,7 @@ function done(clubSlug: string): Result {
 export async function pairTvAction(clubSlug: string, code: string, table: number): Promise<Result> {
   const check = await requireClubStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
-  if (!validTable(table)) return { success: false, error: "Pick a table." };
+  if (!validTvTable(table)) return { success: false, error: "Pick a table." };
   if (!code.trim()) return { success: false, error: "Enter the code shown on the TV." };
 
   const { error } = await pairTvScreen(check.club.id, code, table);
@@ -55,7 +60,7 @@ export async function pairTvAction(clubSlug: string, code: string, table: number
 export async function moveTvAction(clubSlug: string, screenId: string, table: number): Promise<Result> {
   const check = await requireClubStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
-  if (!validTable(table)) return { success: false, error: "Pick a table." };
+  if (!validTvTable(table)) return { success: false, error: "Pick a table." };
 
   const { error } = await moveTvScreen(check.club.id, screenId, table);
   if (error) return { success: false, error };

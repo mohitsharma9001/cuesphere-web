@@ -22,7 +22,8 @@ export function LiveMatchCentre({
   youtubeUrl,
 }: {
   match: LiveMatchView;
-  clubSlug: string;
+  /** Omitted for friendlies, which belong to no club. */
+  clubSlug?: string;
   /** The table's YouTube stream, if the club has added one. */
   youtubeUrl?: string | null;
 }) {
@@ -36,12 +37,12 @@ export function LiveMatchCentre({
   return (
     <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
       <nav className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-        <Link href={clubPath(clubSlug)} className="hover:text-foreground">
+        <Link href={clubSlug ? clubPath(clubSlug) : "/"} className="hover:text-foreground">
           Home
         </Link>
         <ChevronRight className="size-3.5" />
-        <Link href={clubPath(clubSlug, "/live")} className="hover:text-foreground">
-          Live Matches
+        <Link href={clubSlug ? clubPath(clubSlug, "/live") : "/play"} className="hover:text-foreground">
+          {clubSlug ? "Live Matches" : "Friendlies"}
         </Link>
         <ChevronRight className="size-3.5" />
         <span>{match.tournamentName}</span>

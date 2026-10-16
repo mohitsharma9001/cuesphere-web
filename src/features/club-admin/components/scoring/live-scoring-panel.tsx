@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import type { DrawMatch } from "@/types/match";
 
 const TOTAL_REDS = 15;
+
+type LiveProgress = Parameters<typeof updateLiveProgressAction>[1];
 const COLORS: BallColor[] = ["yellow", "green", "brown", "blue", "pink", "black"];
 
 interface LiveState {
@@ -400,18 +402,53 @@ export function LiveScoringPanel({
       toast.error(result.error);
       return;
     }
-    toast.success("Match finished — player stats updated.");
+    toast.success(match.kind === "friendly" ? "Result sent — your opponent confirms it." : "Match finished — player stats updated.");
     router.refresh();
   }
 
+  // Saves never queue up behind each other: while one is on its way, only the
+  // newest state is kept and sent next, so viewers are never behind by a backlog.
+  const sender = React.useRef<{ inFlight: boolean; pending: LiveProgress | null; first: boolean }>({
+    inFlight: false,
+    pending: null,
+    first: true,
+  });
+  const sendProgress = React.useCallback(
+    (payload: LiveProgress) => {
+      const s = sender.current;
+      if (s.inFlight) {
+        s.pending = payload;
+        return;
+      }
+      s.inFlight = true;
+      const run = (p: LiveProgress) => {
+        updateLiveProgressAction(match.id, p)
+          .catch(() => {})
+          .finally(() => {
+            const next = s.pending;
+            s.pending = null;
+            if (next) run(next);
+            else s.inFlight = false;
+          });
+      };
+      run(payload);
+    },
+    [match.id]
+  );
+
   // Push the in-progress frame score + current break to the DB after every
-  // change, so the public live page reflects it (it polls periodically).
+  // change; the server then signals the live page, TV and overlay to refresh.
   React.useEffect(() => {
+    // The first render is what's already saved — nothing to send.
+    if (sender.current.first) {
+      sender.current.first = false;
+      return;
+    }
     const { matchHighestBreak, matchHighestBreakPlayer } = carryHighestBreak(state);
     const highestBreakSoFarPlayerId =
       matchHighestBreakPlayer === 1 ? match.player1Id : matchHighestBreakPlayer === 2 ? match.player2Id : null;
 
-    updateLiveProgressAction(match.id, {
+    sendProgress({
       currentFrameScorePlayer1: state.frameScoreP1,
       currentFrameScorePlayer2: state.frameScoreP2,
       currentBreak: state.currentBreak,
@@ -421,9 +458,9 @@ export function LiveScoringPanel({
       highestBreakSoFarPlayerId,
       currentPlayer: state.currentPlayer,
       inFrameBreak: state.frameBreak,
-    }).catch(() => {});
+    });
   }, [
-    match.id,
+    sendProgress,
     match.player1Id,
     match.player2Id,
     state.frameScoreP1,

@@ -34,20 +34,31 @@ function ClubMark({ club }: { club: TableBoard["club"] }) {
   );
 }
 
-function TopBar({ board, label, pill }: { board: TableBoard; label: string; pill: React.ReactNode }) {
+export function TopBar({
+  board,
+  label,
+  pill,
+  tableText,
+}: {
+  board: TableBoard;
+  label: string;
+  pill: React.ReactNode;
+  /** Defaults to "TABLE n". */
+  tableText?: string;
+}) {
   return (
     <div className="flex h-[88px] shrink-0 items-center justify-between gap-8">
       <ClubMark club={board.club} />
       <p className="truncate text-center text-[32px] text-muted-foreground">{label}</p>
       <div className="flex items-center gap-7">
         {pill}
-        <p className="font-heading text-[52px] font-extrabold tracking-wide text-primary">TABLE {board.table}</p>
+        <p className="font-heading text-[52px] font-extrabold tracking-wide text-primary">{tableText ?? `TABLE ${board.table}`}</p>
       </div>
     </div>
   );
 }
 
-function Pill({ tone, children }: { tone: "live" | "info" | "done"; children: React.ReactNode }) {
+export function Pill({ tone, children }: { tone: "live" | "info" | "done"; children: React.ReactNode }) {
   return (
     <span
       className={cn(
@@ -110,7 +121,18 @@ function PlayerPanel({ match, side }: { match: TableMatch; side: 1 | 2 }) {
   );
 }
 
-function LiveScreen({ board, match, banner }: { board: TableBoard; match: TableMatch; banner: FrameBanner | null }) {
+export function LiveScreen({
+  board,
+  match,
+  banner,
+  footer,
+}: {
+  board: TableBoard;
+  match: TableMatch;
+  banner: FrameBanner | null;
+  /** Replaces the "other tables" ticker (the rotating TV shows its own strip). */
+  footer?: React.ReactNode;
+}) {
   const strikerName = match.onStrike === 1 ? match.p1.name : match.onStrike === 2 ? match.p2.name : null;
 
   return (
@@ -176,7 +198,7 @@ function LiveScreen({ board, match, banner }: { board: TableBoard; match: TableM
         </div>
       </div>
 
-      <Ticker items={board.ticker} />
+      {footer ?? <Ticker items={board.ticker} />}
 
       {banner ? <FrameWonOverlay banner={banner} /> : null}
     </>

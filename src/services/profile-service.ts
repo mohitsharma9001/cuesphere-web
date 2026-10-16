@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { PlayerProfile } from "@/types/player-profile";
+import { isServedPlayerPhotoUrl, playerPhotoUrl } from "@/lib/player-photo";
 
 interface ProfileRow {
   id: string;
@@ -30,7 +31,8 @@ function fromRow(row: ProfileRow): PlayerProfile {
     dob: row.dob ?? "",
     city: row.city,
     emergencyContact: row.emergency_contact,
-    profilePhotoUrl: row.profile_photo_url,
+    // A short cacheable address, not the inline image (see playerPhotoUrl).
+    profilePhotoUrl: playerPhotoUrl(row.id, row.profile_photo_url),
     preferredCue: row.preferred_cue,
     primaryClubId: row.primary_club_id,
     createdAt: row.created_at,
@@ -54,6 +56,13 @@ export async function getProfileById(id: string): Promise<PlayerProfile | undefi
   const admin = createSupabaseAdminClient();
   const { data } = await admin.from("player_profiles").select("*").eq("id", id).maybeSingle();
   return data ? fromRow(data as ProfileRow) : undefined;
+}
+
+/** The stored photo itself (data URL or link), for the player-photo image route only. */
+export async function getStoredProfilePhoto(id: string): Promise<string | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin.from("player_profiles").select("profile_photo_url").eq("id", id).maybeSingle();
+  return (data?.profile_photo_url as string | undefined) || null;
 }
 
 /** Admin-backed lookup for public display of other members' profiles (name/photo),
@@ -112,7 +121,8 @@ export async function updateProfile(
       dob: updates.dob,
       city: updates.city,
       emergency_contact: updates.emergencyContact,
-      profile_photo_url: updates.profilePhotoUrl,
+      // The form sends back the photo address it was shown when the photo is unchanged; keep the stored image.
+      ...(isServedPlayerPhotoUrl(updates.profilePhotoUrl) ? {} : { profile_photo_url: updates.profilePhotoUrl }),
       preferred_cue: updates.preferredCue,
     })
     .eq("user_id", userId)

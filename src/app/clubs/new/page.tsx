@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { getClubById, listMembershipsForUser } from "@/services/club-service";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { CreateClubForm } from "@/features/clubs/components/create-club-form";
+import { listActiveStates, listCities } from "@/services/location-service";
 
 export const metadata: Metadata = { title: "Create Your Club" };
 
@@ -22,6 +23,8 @@ export default async function CreateClubPage() {
     }
   }
 
+  const [states, cities] = await Promise.all([listActiveStates(), listCities()]);
+
   return (
     <div className="flex min-h-screen flex-col">
       <PlatformHeader />
@@ -37,7 +40,7 @@ export default async function CreateClubPage() {
           </p>
 
           <div className="mt-8">
-            <CreateClubForm isLoggedIn={!!session} />
+            <CreateClubForm isLoggedIn={!!session} states={states} cities={cities} />
           </div>
         </div>
       </main>

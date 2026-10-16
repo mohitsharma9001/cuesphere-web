@@ -17,6 +17,8 @@ interface ClubRow {
   phone: string;
   email: string;
   google_maps_url: string;
+  state_code: string | null;
+  city_id: string | null;
   social_links: Record<string, string>;
   about_text: string;
   rules_text: string;
@@ -50,6 +52,8 @@ function clubFromRow(row: ClubRow): Club {
     phone: row.phone,
     email: row.email,
     googleMapsUrl: row.google_maps_url,
+    stateCode: row.state_code ?? null,
+    cityId: row.city_id ?? null,
     socialLinks: row.social_links ?? {},
     aboutText: row.about_text ?? "",
     rulesText: row.rules_text ?? "",
@@ -103,6 +107,8 @@ function slugify(name: string): string {
 export async function createClub(input: {
   name: string;
   tagline?: string;
+  stateCode: string;
+  cityId: string;
   ownerUserId: string;
 }): Promise<{ club: Club } | { error: string }> {
   const baseSlug = slugify(input.name);
@@ -120,7 +126,14 @@ export async function createClub(input: {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("clubs")
-    .insert({ slug, name: input.name, tagline: input.tagline ?? "", status: "pending" })
+    .insert({
+      slug,
+      name: input.name,
+      tagline: input.tagline ?? "",
+      state_code: input.stateCode,
+      city_id: input.cityId,
+      status: "pending",
+    })
     .select("*")
     .single();
 
@@ -175,6 +188,8 @@ export async function updateClub(
     phone?: string;
     email?: string;
     googleMapsUrl?: string;
+    stateCode?: string;
+    cityId?: string;
     socialLinks?: Record<string, string>;
     aboutText?: string;
     rulesText?: string;
@@ -195,6 +210,8 @@ export async function updateClub(
       ...(input.phone !== undefined ? { phone: input.phone } : {}),
       ...(input.email !== undefined ? { email: input.email } : {}),
       ...(input.googleMapsUrl !== undefined ? { google_maps_url: input.googleMapsUrl } : {}),
+      ...(input.stateCode !== undefined ? { state_code: input.stateCode } : {}),
+      ...(input.cityId !== undefined ? { city_id: input.cityId } : {}),
       ...(input.socialLinks !== undefined ? { social_links: input.socialLinks } : {}),
       ...(input.aboutText !== undefined ? { about_text: input.aboutText } : {}),
       ...(input.rulesText !== undefined ? { rules_text: input.rulesText } : {}),

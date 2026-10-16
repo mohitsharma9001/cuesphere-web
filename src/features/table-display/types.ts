@@ -52,7 +52,7 @@ export interface TableStream {
 }
 
 export interface TableBoard {
-  club: { name: string; logoUrl: string };
+  club: { id: string; name: string; logoUrl: string };
   stream: TableStream;
   table: number;
   live: TableMatch | null;
@@ -60,4 +60,14 @@ export interface TableBoard {
   /** The match the screen was last showing, so it can show the result once it ends. */
   followed: TableMatch | null;
   ticker: TickerItem[];
+}
+
+/** The whole club's live state, for a TV that rotates through every live table. */
+export interface ClubBoard {
+  club: { id: string; name: string; logoUrl: string };
+  stream: TableStream;
+  /** One live match per table, in table order. */
+  live: TableMatch[];
+  /** Upcoming matches on tables with nothing live, in table order. */
+  next: TableMatch[];
 }

@@ -13,6 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AnimatedCounter } from "@/components/shared/animated-counter";
 import { Reveal, RevealGroup, RevealItem } from "@/components/shared/reveal";
+import { getSession } from "@/lib/auth/session";
+import { isFollowingPlayer } from "@/services/follow-service";
+import { FollowButton } from "@/features/friends/components/follow-button";
+import { PlayingNowBanner } from "@/features/friends/components/playing-now-banner";
+import { getPlayerLiveMatch } from "@/features/friends/player-live-match";
 import type { Achievement } from "@/types/player-stats";
 
 const ACHIEVEMENT_ICONS: Record<Achievement["icon"], React.ElementType> = {
@@ -81,20 +86,24 @@ export default async function PlayerProfilePage({
   const membership = await getMembership(club.id, profile.userId);
   if (!membership) notFound();
 
-  const [stats, achievements, matchHistory, highestBreaks] = await Promise.all([
+  const session = await getSession();
+  const [stats, achievements, matchHistory, highestBreaks, following, liveNow] = await Promise.all([
     getStatsForPlayer(playerId, club.id),
     getAchievementsForPlayer(playerId, club.id),
     getPlayerMatchHistoryForClub(playerId, club.id),
     getHighestBreaksForPlayer(playerId, club.id),
+    session ? isFollowingPlayer(session.id, playerId) : Promise.resolve(false),
+    getPlayerLiveMatch(playerId),
   ]);
+  const canFollow = !!session && session.id !== profile.userId;
 
   const tournamentsById = new Map<string, { name: string; slug: string }>();
-  for (const match of [...matchHistory, ...highestBreaks]) {
-    if (!tournamentsById.has(match.tournamentId)) {
-      const tournament = await getClubTournamentById(match.tournamentId);
-      if (tournament) tournamentsById.set(match.tournamentId, tournament);
-    }
-  }
+  // One lookup per distinct tournament, all at once rather than one after another.
+  const tournamentIds = [...new Set([...matchHistory, ...highestBreaks].map((m) => m.tournamentId))];
+  const tournaments = await Promise.all(tournamentIds.map((tid) => getClubTournamentById(tid)));
+  tournaments.forEach((tournament, i) => {
+    if (tournament) tournamentsById.set(tournamentIds[i], tournament);
+  });
 
   const winRate = stats && stats.matchesPlayed > 0 ? Math.round((stats.wins / stats.matchesPlayed) * 100) : 0;
 
@@ -118,7 +127,14 @@ export default async function PlayerProfilePage({
             </p>
             {profile.city ? <p className="text-sm text-muted-foreground">{profile.city}</p> : null}
           </div>
+          {canFollow ? (
+            <div className="ml-auto">
+              <FollowButton playerId={playerId} playerName={profile.fullName || "this player"} initialFollowing={following} />
+            </div>
+          ) : null}
         </Reveal>
+
+        {liveNow ? <PlayingNowBanner match={liveNow} /> : null}
 
         {!stats || stats.matchesPlayed === 0 ? (
           <EmptyState

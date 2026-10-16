@@ -63,7 +63,7 @@ export function ResultOnlyPanel({
       return;
     }
 
-    toast.success("Result saved — player stats updated.");
+    toast.success(match.kind === "friendly" ? "Result sent — your opponent confirms it." : "Result saved — player stats updated.");
     router.refresh();
   }
 

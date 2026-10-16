@@ -30,7 +30,7 @@ function PairedTvRow({ tv, clubSlug, tableCount, now }: { tv: PairedTv; clubSlug
     setBusy(false);
     if (!result.success) toast.error(result.error);
     else {
-      toast.success(`TV now shows Table ${table}`);
+      toast.success(table === 0 ? "TV now rotates through every live table" : `TV now shows Table ${table}`);
       router.refresh();
     }
   }
@@ -64,7 +64,7 @@ function PairedTvRow({ tv, clubSlug, tableCount, now }: { tv: PairedTv; clubSlug
       </label>
       <select
         id={`tv-${tv.id}`}
-        className={cn(selectClass, "w-32")}
+        className={cn(selectClass, "w-44")}
         value={tv.tableNumber ?? 1}
         disabled={busy}
         onChange={(e) => move(Number(e.target.value))}
@@ -74,6 +74,7 @@ function PairedTvRow({ tv, clubSlug, tableCount, now }: { tv: PairedTv; clubSlug
             Table {i + 1}
           </option>
         ))}
+        <option value={0}>All tables (rotate)</option>
       </select>
       <Button variant="outline" size="sm" className="h-11" disabled={busy} onClick={unpair}>
         <Unlink className="size-4" /> Unpair

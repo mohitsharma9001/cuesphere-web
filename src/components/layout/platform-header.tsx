@@ -56,6 +56,9 @@ export function PlatformHeader() {
             <LinkButton href="/tournaments" variant="ghost" size="sm">
               Tournaments
             </LinkButton>
+            <LinkButton href="/rankings" variant="ghost" size="sm">
+              Rankings
+            </LinkButton>
             {!viewer.ownsClub ? (
               <LinkButton href="/clubs/new" variant="outline" size="sm">
                 Create Your Club
@@ -63,6 +66,9 @@ export function PlatformHeader() {
             ) : null}
             {viewer.user ? (
               <>
+                <LinkButton href="/play" variant="ghost" size="sm">
+                  Friendlies
+                </LinkButton>
                 <LinkButton href="/players" variant="ghost" size="sm">
                   Players
                 </LinkButton>
@@ -116,6 +122,11 @@ export function PlatformHeader() {
                     Tournaments
                   </span>
                 </SheetClose>
+                <SheetClose nativeButton={false} render={<Link href="/rankings" />}>
+                  <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
+                    Rankings
+                  </span>
+                </SheetClose>
                 {!viewer.ownsClub ? (
                   <SheetClose nativeButton={false} render={<Link href="/clubs/new" />}>
                     <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
@@ -125,6 +136,11 @@ export function PlatformHeader() {
                 ) : null}
                 {viewer.user ? (
                   <>
+                    <SheetClose nativeButton={false} render={<Link href="/play" />}>
+                      <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
+                        Friendlies
+                      </span>
+                    </SheetClose>
                     <SheetClose nativeButton={false} render={<Link href="/players" />}>
                       <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
                         Players

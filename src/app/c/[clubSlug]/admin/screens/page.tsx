@@ -72,6 +72,14 @@ export default async function AdminScreensPage({
           tableCount={tableCount}
           tvs={tvs.map((t) => ({ id: t.id, tableNumber: t.tableNumber, lastSeenAt: t.lastSeenAt }))}
         />
+        <p className="text-xs text-muted-foreground">
+          Only one TV? Choose <strong className="text-foreground">All tables (rotate)</strong>: it shows each live table for
+          10 seconds in turn. Or open{" "}
+          <Link href={clubPath(clubSlug, "/tv/all")} target="_blank" className="text-primary hover:underline">
+            {clubPath(clubSlug, "/tv/all")}
+          </Link>{" "}
+          on the TV directly.
+        </p>
       </section>
 
       <section className="space-y-3">

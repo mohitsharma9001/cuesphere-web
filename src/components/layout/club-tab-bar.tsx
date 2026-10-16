@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, LayoutDashboard, LogIn, Radio, Trophy, UserRound } from "lucide-react";
+import { Home, LayoutDashboard, LogIn, Radio, Trophy, UserRound, Users } from "lucide-react";
 
 import { MobileTabBar, type MobileTab } from "@/components/layout/mobile-tab-bar";
 import { useViewer } from "@/components/shared/viewer-provider";
@@ -24,6 +24,8 @@ export function ClubTabBar() {
     tabs.push({ href: `${basePath}/admin/live`, label: "Score", icon: LayoutDashboard });
   } else if (isStaffRole(membership?.role)) {
     tabs.push({ href: `${basePath}/admin`, label: "Admin", icon: LayoutDashboard });
+  } else if (viewer.user) {
+    tabs.push({ href: "/friends", label: "Friends", icon: Users });
   }
 
   if (!viewer.user) {

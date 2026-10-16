@@ -28,6 +28,9 @@ export interface Club {
   phone: string;
   email: string;
   googleMapsUrl: string;
+  /** Launch state the club is in (e.g. "KA"); null for clubs created before locations. */
+  stateCode: string | null;
+  cityId: string | null;
   socialLinks: Record<string, string>;
   aboutText: string;
   rulesText: string;

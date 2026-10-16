@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
   if (!screen) return Response.json({ error: "Unknown TV" }, { status: 404 });
 
   const headers = { "Cache-Control": "no-store" };
-  if (screen.clubId && screen.tableNumber) {
+  // Table 0 means "all tables, rotating".
+  if (screen.clubId && screen.tableNumber !== null) {
     const club = await getClubById(screen.clubId);
     if (club && club.status === "approved") {
       return Response.json({ paired: true, clubSlug: club.slug, table: screen.tableNumber }, { headers });

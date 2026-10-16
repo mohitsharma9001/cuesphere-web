@@ -3,6 +3,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getClubBySlug, getMembership, updateClub } from "@/services/club-service";
 import { isStaffRole } from "@/types/club";
+import { validateClubLocation } from "@/services/location-service";
 
 export async function updateClubSettingsAction(
   clubSlug: string,
@@ -14,6 +15,8 @@ export async function updateClubSettingsAction(
     phone?: string;
     email?: string;
     googleMapsUrl?: string;
+    stateCode?: string;
+    cityId?: string;
     socialLinks?: Record<string, string>;
     aboutText?: string;
     rulesText?: string;
@@ -35,6 +38,10 @@ export async function updateClubSettingsAction(
   if (!input.name.trim()) {
     return { success: false as const, error: "Enter a club name." };
   }
+  if (input.stateCode !== undefined || input.cityId !== undefined) {
+    const location = await validateClubLocation(input.stateCode ?? "", input.cityId ?? "");
+    if (!location.ok) return { success: false as const, error: location.error };
+  }
 
   try {
     await updateClub(club.id, {
@@ -45,6 +52,8 @@ export async function updateClubSettingsAction(
       phone: input.phone,
       email: input.email,
       googleMapsUrl: input.googleMapsUrl,
+      stateCode: input.stateCode,
+      cityId: input.cityId,
       socialLinks: input.socialLinks,
       aboutText: input.aboutText,
       rulesText: input.rulesText,

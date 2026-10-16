@@ -4,16 +4,21 @@ import { getSession } from "@/lib/auth/session";
 import { signUp } from "@/services/auth-service";
 import { ensureProfileForUser } from "@/services/profile-service";
 import { createClub } from "@/services/club-service";
+import { validateClubLocation } from "@/services/location-service";
 
 export async function createClubAction(input: {
   name: string;
   tagline?: string;
   email?: string;
   password?: string;
+  stateCode: string;
+  cityId: string;
 }) {
   if (!input.name.trim()) {
     return { success: false as const, error: "Enter a club name." };
   }
+  const location = await validateClubLocation(input.stateCode, input.cityId);
+  if (!location.ok) return { success: false as const, error: location.error };
 
   let ownerUserId: string;
 
@@ -43,7 +48,13 @@ export async function createClubAction(input: {
     ownerUserId = signUpResult.userId;
   }
 
-  const result = await createClub({ name: input.name, tagline: input.tagline, ownerUserId });
+  const result = await createClub({
+    name: input.name,
+    tagline: input.tagline,
+    stateCode: input.stateCode,
+    cityId: input.cityId,
+    ownerUserId,
+  });
   if ("error" in result) {
     return { success: false as const, error: result.error };
   }

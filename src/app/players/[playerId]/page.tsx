@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Trophy, Target, TrendingUp, Flame, MapPin, Star } from "lucide-react";
+import Link from "next/link";
+import { Trophy, Target, TrendingUp, Flame, MapPin, Star, Medal, Swords } from "lucide-react";
 
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { PlatformFooter } from "@/components/layout/platform-footer";
@@ -11,6 +12,12 @@ import { getClubById, listMembershipsForUser } from "@/services/club-service";
 import { getStatsForPlayerAllClubs } from "@/services/stats-service";
 import { getSession } from "@/lib/auth/session";
 import { listFriendshipsForUser } from "@/services/friendship-service";
+import { isFollowingPlayer } from "@/services/follow-service";
+import { FollowButton } from "@/features/friends/components/follow-button";
+import { PlayingNowBanner } from "@/features/friends/components/playing-now-banner";
+import { getPlayerLiveMatch } from "@/features/friends/player-live-match";
+import { getPlayerRanks } from "@/services/ranking-service";
+import { getFriendlyStats } from "@/services/friendly-service";
 
 export async function generateMetadata({
   params,
@@ -45,10 +52,14 @@ export default async function PlayerProfilePage({
 
   const session = await getSession();
 
-  const [memberships, statsRows, friendships] = await Promise.all([
+  const [memberships, statsRows, friendships, following, liveNow, ranks, friendly] = await Promise.all([
     listMembershipsForUser(profile.userId),
     getStatsForPlayerAllClubs(profile.id),
     session ? listFriendshipsForUser(session.id) : Promise.resolve([]),
+    session ? isFollowingPlayer(session.id, profile.id) : Promise.resolve(false),
+    getPlayerLiveMatch(profile.id),
+    getPlayerRanks(profile.id),
+    getFriendlyStats(profile.id),
   ]);
 
   const clubs = (
@@ -99,8 +110,33 @@ export default async function PlayerProfilePage({
                 </p>
               ) : null}
             </div>
-            {!isSelf && session ? <PlayerActions entry={entry} /> : null}
+            {!isSelf && session ? (
+              <div className="flex flex-wrap gap-2">
+                <FollowButton playerId={profile.id} playerName={profile.fullName} initialFollowing={following} />
+                <PlayerActions entry={entry} />
+                <LinkButton href={`/play/new?opponent=${profile.id}`} size="sm">
+                  <Swords className="size-3.5" /> Challenge
+                </LinkButton>
+              </div>
+            ) : null}
           </div>
+
+          {liveNow ? <PlayingNowBanner match={liveNow} /> : null}
+
+          {ranks.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {ranks.map((r) => (
+                <Link
+                  key={`${r.scope}-${r.code}`}
+                  href={r.href}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary hover:bg-primary/15"
+                >
+                  <Medal className="size-3.5" /> #{r.rank} in {r.name}
+                  <span className="font-normal text-muted-foreground">of {r.total}</span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard icon={Trophy} label="Tournaments" value={totals.tournamentsPlayed} />
@@ -108,6 +144,28 @@ export default async function PlayerProfilePage({
             <StatCard icon={TrendingUp} label="Win Rate" value={`${winRate}%`} />
             <StatCard icon={Flame} label="Highest Break" value={totals.highestBreak} />
           </div>
+
+          {friendly.matchesPlayed > 0 ? (
+            <div className="mt-8">
+              <h2 className="font-heading text-lg font-bold text-foreground">Friendlies</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {friendly.wins}W · {friendly.losses}L · Frames {friendly.framesWon}–{friendly.framesLost}
+                {friendly.highestBreak > 0 ? ` · Highest break ${friendly.highestBreak}` : ""}
+              </p>
+              {friendly.recentForm.length > 0 ? (
+                <div className="mt-2 flex gap-1">
+                  {friendly.recentForm.map((f, i) => (
+                    <span
+                      key={i}
+                      className={f === "W" ? "flex size-6 items-center justify-center rounded-md bg-success/15 text-xs font-bold text-success" : "flex size-6 items-center justify-center rounded-md bg-muted text-xs font-bold text-muted-foreground"}
+                    >
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-8">
             <h2 className="font-heading text-lg font-bold text-foreground">Clubs</h2>

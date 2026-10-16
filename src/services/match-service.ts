@@ -1,12 +1,13 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getProfileById } from "@/services/profile-service";
-import type { DrawMatch, FrameScore } from "@/types/match";
+import type { DrawMatch, FrameScore, FriendlyState, MatchKind } from "@/types/match";
 import type { BallColor } from "@/features/live-match/components/ball-icon";
 
-interface MatchRow {
+export interface MatchRow {
   id: string;
-  club_id: string;
-  tournament_id: string;
+  kind?: MatchKind | null;
+  club_id: string | null;
+  tournament_id: string | null;
   round: string;
   table_number: number;
   player1_id: string;
@@ -30,13 +31,20 @@ interface MatchRow {
   frame_scores: FrameScore[] | null;
   current_player?: number | null;
   in_frame_break?: boolean | null;
+  venue_club_id?: string | null;
+  best_of?: number | null;
+  created_by?: string | null;
+  friendly_state?: FriendlyState | null;
+  result_submitted_by?: string | null;
+  created_at: string;
 }
 
-function fromRow(row: MatchRow): DrawMatch {
+export function fromRow(row: MatchRow): DrawMatch {
   return {
     id: row.id,
-    clubId: row.club_id,
-    tournamentId: row.tournament_id,
+    kind: row.kind === "friendly" ? "friendly" : "tournament",
+    clubId: row.club_id ?? "",
+    tournamentId: row.tournament_id ?? "",
     round: row.round,
     tableNumber: row.table_number,
     player1Id: row.player1_id,
@@ -60,6 +68,12 @@ function fromRow(row: MatchRow): DrawMatch {
     frameScores: row.frame_scores ?? [],
     currentPlayer: row.current_player === 1 || row.current_player === 2 ? row.current_player : null,
     inFrameBreak: row.in_frame_break === true,
+    venueClubId: row.venue_club_id ?? null,
+    bestOf: row.best_of ?? null,
+    createdBy: row.created_by ?? null,
+    friendlyState: row.friendly_state ?? null,
+    resultSubmittedBy: row.result_submitted_by ?? null,
+    createdAt: row.created_at,
   };
 }
 
@@ -203,6 +217,23 @@ export async function getLiveMatchForClub(clubId: string): Promise<DrawMatch | u
     .limit(1)
     .maybeSingle();
   return data ? fromRow(data as MatchRow) : undefined;
+}
+
+/** Live and scheduled matches, across every club, involving any of these players. */
+export async function getOpenMatchesForPlayers(playerIds: string[]): Promise<DrawMatch[]> {
+  if (playerIds.length === 0) return [];
+  const admin = createSupabaseAdminClient();
+  const ids = playerIds.join(",");
+  const { data } = await admin
+    .from("matches")
+    .select("*")
+    .in("status", ["scheduled", "live"])
+    .or(`player1_id.in.(${ids}),player2_id.in.(${ids})`)
+    // Friendlies only once accepted — not open challenges or called-off ones.
+    .or("kind.eq.tournament,friendly_state.eq.accepted")
+    .order("created_at", { ascending: true })
+    .limit(50);
+  return (data as MatchRow[] | null)?.map(fromRow) ?? [];
 }
 
 /** All not-yet-completed matches across every tournament in a club — the
