@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, UserCog, Users } from "lucide-react";
+import { LogOut, Menu, ShieldCheck, UserCog, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/shared/link-button";
@@ -29,6 +29,16 @@ function Brand() {
         Cue<span className="text-primary">Sphere</span>
       </span>
     </Link>
+  );
+}
+
+/** Small count of clubs waiting for approval. */
+function PendingBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+      {count}
+    </span>
   );
 }
 
@@ -66,6 +76,12 @@ export function PlatformHeader() {
             ) : null}
             {viewer.user ? (
               <>
+                {viewer.isPlatformAdmin ? (
+                  <LinkButton href="/platform/admin" variant="ghost" size="sm">
+                    <ShieldCheck className="size-4 text-primary" /> Club Approvals
+                    <PendingBadge count={viewer.pendingClubCount} />
+                  </LinkButton>
+                ) : null}
                 <LinkButton href="/play" variant="ghost" size="sm">
                   Friendlies
                 </LinkButton>
@@ -136,6 +152,14 @@ export function PlatformHeader() {
                 ) : null}
                 {viewer.user ? (
                   <>
+                    {viewer.isPlatformAdmin ? (
+                      <SheetClose nativeButton={false} render={<Link href="/platform/admin" />}>
+                        <span className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-primary hover:bg-white/5">
+                          <ShieldCheck className="size-4" /> Club Approvals
+                          <PendingBadge count={viewer.pendingClubCount} />
+                        </span>
+                      </SheetClose>
+                    ) : null}
                     <SheetClose nativeButton={false} render={<Link href="/play" />}>
                       <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
                         Friendlies

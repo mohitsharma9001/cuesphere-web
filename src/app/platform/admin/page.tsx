@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { isPlatformAdmin, listClubs } from "@/services/club-service";
+import { isPlatformAdmin, listClubs, listMembershipsForClub } from "@/services/club-service";
+import { listCities, listStates } from "@/services/location-service";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PendingClubCard } from "@/features/platform-admin/components/pending-club-card";
@@ -20,12 +22,26 @@ export default async function PlatformAdminPage() {
   const pending = clubs.filter((club) => club.status === "pending");
   const approved = clubs.filter((club) => club.status === "approved");
 
+  // Where each request is from and who sent it, to decide quickly.
+  const [states, cities] = await Promise.all([listStates(), listCities()]);
+  const admin = createSupabaseAdminClient();
+  const details = await Promise.all(
+    pending.map(async (club) => {
+      const owner = (await listMembershipsForClub(club.id)).find((m) => m.role === "club_admin");
+      const email = owner ? (await admin.auth.admin.getUserById(owner.userId)).data.user?.email : undefined;
+      const place = [cities.find((c) => c.id === club.cityId)?.name, states.find((s) => s.code === club.stateCode)?.name]
+        .filter(Boolean)
+        .join(", ");
+      return { id: club.id, place: place || undefined, email };
+    })
+  );
+
   return (
     <div className="flex min-h-screen flex-col">
       <PlatformHeader />
       <main className="flex-1">
         <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-          <h1 className="font-heading text-2xl font-bold text-foreground">Platform Admin</h1>
+          <h1 className="font-heading text-2xl font-bold text-foreground">Club Approvals</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Review club registration requests before they go live on CueSphere.
           </p>
@@ -42,7 +58,10 @@ export default async function PlatformAdminPage() {
                   description="New club registrations will show up here for your review."
                 />
               ) : (
-                pending.map((club) => <PendingClubCard key={club.id} club={club} />)
+                pending.map((club) => {
+                  const d = details.find((x) => x.id === club.id);
+                  return <PendingClubCard key={club.id} club={club} place={d?.place} ownerEmail={d?.email} />;
+                })
               )}
             </div>
           </section>

@@ -156,6 +156,13 @@ export async function createClub(input: {
   return { club };
 }
 
+/** New clubs waiting for a platform admin to approve them. */
+export async function countPendingClubs(): Promise<number> {
+  const admin = createSupabaseAdminClient();
+  const { count } = await admin.from("clubs").select("id", { count: "exact", head: true }).eq("status", "pending");
+  return count ?? 0;
+}
+
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
   const admin = createSupabaseAdminClient();
   const { data } = await admin
