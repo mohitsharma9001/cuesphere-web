@@ -69,6 +69,9 @@ export function PlatformHeader() {
             <LinkButton href="/rankings" variant="ghost" size="sm">
               Rankings
             </LinkButton>
+            <LinkButton href="/for-clubs" variant="ghost" size="sm">
+              For Clubs
+            </LinkButton>
             {!viewer.ownsClub ? (
               <LinkButton href="/clubs/new" variant="outline" size="sm">
                 Create Your Club
@@ -141,6 +144,11 @@ export function PlatformHeader() {
                 <SheetClose nativeButton={false} render={<Link href="/rankings" />}>
                   <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-white/5">
                     Rankings
+                  </span>
+                </SheetClose>
+                <SheetClose nativeButton={false} render={<Link href="/for-clubs" />}>
+                  <span className="block rounded-lg px-3 py-2.5 text-sm font-medium text-primary hover:bg-white/5">
+                    For Clubs
                   </span>
                 </SheetClose>
                 {!viewer.ownsClub ? (
