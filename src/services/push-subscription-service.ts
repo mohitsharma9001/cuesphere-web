@@ -1,71 +1,27 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { api } from "@/lib/api/server";
 
-export interface PushSubscriptionRecord {
-  id: string;
-  userId: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-}
+// Sending pushes now happens in the API; this only manages the signed-in user's devices.
 
 export async function savePushSubscription(
-  userId: string,
+  _userId: string,
   subscription: { endpoint: string; p256dh: string; auth: string }
 ): Promise<{ error?: string }> {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin.from("push_subscriptions").upsert(
-    {
-      user_id: userId,
-      endpoint: subscription.endpoint,
-      p256dh: subscription.p256dh,
-      auth: subscription.auth,
-    },
-    { onConflict: "endpoint" }
-  );
-  return { error: error?.message };
+  try {
+    await api("/push/subscriptions", {
+      method: "POST",
+      body: { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+    });
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not save the subscription." };
+  }
 }
 
 export async function deletePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
-  const admin = createSupabaseAdminClient();
-  await admin.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  await api("/push/subscriptions", { method: "DELETE", body: { endpoint }, auth: false }).catch(() => {});
 }
 
-export async function listAllPushSubscriptions(): Promise<PushSubscriptionRecord[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("push_subscriptions").select("*");
-  return (
-    data?.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      endpoint: row.endpoint,
-      p256dh: row.p256dh,
-      auth: row.auth,
-    })) ?? []
-  );
-}
-
-export async function listPushSubscriptionsForUsers(userIds: string[]): Promise<PushSubscriptionRecord[]> {
-  if (userIds.length === 0) return [];
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("push_subscriptions").select("*").in("user_id", userIds);
-  return (
-    data?.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      endpoint: row.endpoint,
-      p256dh: row.p256dh,
-      auth: row.auth,
-    })) ?? []
-  );
-}
-
-export async function isUserSubscribed(userId: string): Promise<boolean> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("push_subscriptions")
-    .select("id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-  return !!data;
+export async function isUserSubscribed(_userId: string): Promise<boolean> {
+  const { subscribed } = await api<{ subscribed: boolean }>("/push/status").catch(() => ({ subscribed: false }));
+  return subscribed;
 }

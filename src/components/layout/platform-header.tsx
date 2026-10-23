@@ -82,7 +82,7 @@ export function PlatformHeader() {
                 {viewer.isPlatformAdmin ? (
                   <LinkButton href="/platform/admin" variant="ghost" size="sm">
                     <ShieldCheck className="size-4 text-primary" /> Club Approvals
-                    <PendingBadge count={viewer.pendingClubCount} />
+                    <PendingBadge count={viewer.pendingClubCount + viewer.pendingEnquiryCount} />
                   </LinkButton>
                 ) : null}
                 <LinkButton href="/play" variant="ghost" size="sm">
@@ -164,7 +164,7 @@ export function PlatformHeader() {
                       <SheetClose nativeButton={false} render={<Link href="/platform/admin" />}>
                         <span className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-primary hover:bg-white/5">
                           <ShieldCheck className="size-4" /> Club Approvals
-                          <PendingBadge count={viewer.pendingClubCount} />
+                          <PendingBadge count={viewer.pendingClubCount + viewer.pendingEnquiryCount} />
                         </span>
                       </SheetClose>
                     ) : null}

@@ -1,23 +1,21 @@
 import type { NextRequest } from "next/server";
 
-import { checkInTvScreen } from "@/services/tv-screen-service";
-import { getClubById } from "@/services/club-service";
+import { api, ApiRequestError } from "@/lib/api/server";
+
+type TvStatus =
+  | { paired: true; clubSlug: string; table: number }
+  | { paired: false; code: string | null; expiresAt: string | null };
 
 /** Polled by a TV: which table it's paired with, or the code to keep showing. */
 export async function GET(request: NextRequest) {
   const token = request.headers.get("x-tv-token");
   if (!token) return Response.json({ error: "Missing TV token" }, { status: 400 });
 
-  const screen = await checkInTvScreen(token);
-  if (!screen) return Response.json({ error: "Unknown TV" }, { status: 404 });
-
-  const headers = { "Cache-Control": "no-store" };
-  // Table 0 means "all tables, rotating".
-  if (screen.clubId && screen.tableNumber !== null) {
-    const club = await getClubById(screen.clubId);
-    if (club && club.status === "approved") {
-      return Response.json({ paired: true, clubSlug: club.slug, table: screen.tableNumber }, { headers });
-    }
+  try {
+    const status = await api<TvStatus>("/tv/status", { auth: false, headers: { "x-tv-token": token } });
+    return Response.json(status, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    const status = error instanceof ApiRequestError ? error.status : 502;
+    return Response.json({ error: error instanceof Error ? error.message : "Unavailable" }, { status });
   }
-  return Response.json({ paired: false, code: screen.pairCode, expiresAt: screen.codeExpiresAt }, { headers });
 }

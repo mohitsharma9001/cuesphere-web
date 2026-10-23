@@ -10,6 +10,10 @@ export async function joinClubAction(clubSlug: string) {
   const club = await getClubBySlug(clubSlug);
   if (!club) return { success: false as const, error: "Club not found." };
 
-  await ensurePlayerMembership(club.id, session.id);
+  try {
+    await ensurePlayerMembership(club.id, session.id);
+  } catch (err) {
+    return { success: false as const, error: err instanceof Error ? err.message : "Could not join club." };
+  }
   return { success: true as const };
 }

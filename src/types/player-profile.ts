@@ -14,8 +14,8 @@ export interface PlayerProfile {
   createdAt: string;
 }
 
+// A profile photo is optional.
 export const REQUIRED_PROFILE_FIELDS: (keyof PlayerProfile)[] = [
-  "profilePhotoUrl",
   "fullName",
   "mobile",
   "email",

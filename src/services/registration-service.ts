@@ -1,168 +1,112 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { TOURNAMENTS } from "@/lib/mock/tournaments";
+import { cache } from "react";
+import { api, apiMaybe } from "@/lib/api/server";
+import { clubActionError } from "@/services/club-tournament-service";
 import type { TournamentRegistration } from "@/types/registration";
 
-interface RegistrationRow {
-  id: string;
-  registration_number: string;
-  club_id: string;
-  tournament_id: string;
-  player_id: string;
-  status: TournamentRegistration["status"];
-  emergency_contact: string;
-  preferred_cue: string;
-  notes: string;
-  agreed_to_rules: boolean;
-  payment_status: TournamentRegistration["paymentStatus"];
-  created_at: string;
-}
+/** A registration as the API returns it. Public tournament lists omit the
+ * private fields (emergency contact, notes, cue) for non-staff viewers. */
+type RegistrationDoc = Omit<TournamentRegistration, "emergencyContact" | "preferredCue" | "notes"> &
+  Partial<Pick<TournamentRegistration, "emergencyContact" | "preferredCue" | "notes">>;
 
-function fromRow(row: RegistrationRow): TournamentRegistration {
+function fromDoc(doc: RegistrationDoc): TournamentRegistration {
   return {
-    id: row.id,
-    registrationNumber: row.registration_number,
-    clubId: row.club_id,
-    tournamentId: row.tournament_id,
-    playerId: row.player_id,
-    status: row.status,
-    emergencyContact: row.emergency_contact,
-    preferredCue: row.preferred_cue,
-    notes: row.notes,
-    agreedToRules: row.agreed_to_rules,
-    paymentStatus: row.payment_status,
-    createdAt: row.created_at,
+    id: doc.id,
+    registrationNumber: doc.registrationNumber,
+    clubId: doc.clubId,
+    tournamentId: doc.tournamentId,
+    playerId: doc.playerId,
+    status: doc.status,
+    emergencyContact: doc.emergencyContact ?? "",
+    preferredCue: doc.preferredCue ?? "",
+    notes: doc.notes ?? "",
+    agreedToRules: doc.agreedToRules,
+    paymentStatus: doc.paymentStatus,
+    createdAt: doc.createdAt,
   };
 }
 
-export function generateRegistrationNumber(tournamentId: string): string {
-  const tournament = TOURNAMENTS.find((t) => t.id === tournamentId);
-  const year = tournament ? new Date(tournament.startDate).getFullYear() : new Date().getFullYear();
-  const sequence = Math.floor(1000 + Math.random() * 8999);
-  return `REG-${year}-${sequence}`;
-}
+/** The signed-in player's active registrations across every club, newest
+ * first — fetched once per request and shared by the lookups below. */
+const getMyRegistrations = cache(async (): Promise<TournamentRegistration[]> => {
+  try {
+    return (await api<RegistrationDoc[]>("/registrations/mine")).map(fromDoc);
+  } catch {
+    return []; // signed out
+  }
+});
 
+/** `playerId` must be the signed-in viewer's own profile id — the API only
+ * reveals a player's registrations to that player. */
 export async function getRegistrationForPlayer(
   tournamentId: string,
   playerId: string
 ): Promise<TournamentRegistration | undefined> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_registrations")
-    .select("*")
-    .eq("tournament_id", tournamentId)
-    .eq("player_id", playerId)
-    .neq("status", "cancelled")
-    .maybeSingle();
-  return data ? fromRow(data as RegistrationRow) : undefined;
+  const mine = await getMyRegistrations();
+  return mine.find((r) => r.tournamentId === tournamentId && r.playerId === playerId);
 }
 
-export async function getRegistrationById(id: string): Promise<TournamentRegistration | undefined> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("tournament_registrations").select("*").eq("id", id).maybeSingle();
-  return data ? fromRow(data as RegistrationRow) : undefined;
+/** Visible to the registered player and the club's staff. */
+export const getRegistrationById = cache(async (id: string): Promise<TournamentRegistration | undefined> => {
+  const doc = await getRegistrationWithPayment(id);
+  return doc ? fromDoc(doc) : undefined;
+});
+
+/** Shared with payment-service: GET /registrations/:id returns the payment alongside. */
+export const getRegistrationWithPayment = cache(async (id: string) => {
+  try {
+    return await apiMaybe<RegistrationDoc & { payment: unknown }>(`/registrations/${encodeURIComponent(id)}`);
+  } catch {
+    return undefined; // invalid id, signed out, or not allowed to see it
+  }
+});
+
+/** `playerId` must be the signed-in viewer's own profile id (see above). */
+export async function getRegistrationsForPlayer(playerId: string, clubId?: string): Promise<TournamentRegistration[]> {
+  const mine = await getMyRegistrations();
+  return mine.filter((r) => r.playerId === playerId && (!clubId || r.clubId === clubId));
 }
 
-export async function getRegistrationsForPlayer(
-  playerId: string,
-  clubId?: string
-): Promise<TournamentRegistration[]> {
-  const admin = createSupabaseAdminClient();
-  let query = admin
-    .from("tournament_registrations")
-    .select("*")
-    .eq("player_id", playerId)
-    .neq("status", "cancelled");
-  if (clubId) query = query.eq("club_id", clubId);
-  const { data } = await query.order("created_at", { ascending: false });
-  return (data as RegistrationRow[] | null)?.map(fromRow) ?? [];
-}
-
+/** Staff only: every registration in the club, newest first. */
 export async function getRegistrationsForClub(clubId: string): Promise<TournamentRegistration[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_registrations")
-    .select("*")
-    .eq("club_id", clubId)
-    .order("created_at", { ascending: false });
-  return (data as RegistrationRow[] | null)?.map(fromRow) ?? [];
+  const docs = await api<RegistrationDoc[]>(`/clubs/${encodeURIComponent(clubId)}/registrations`);
+  return docs.map(fromDoc);
 }
 
-export async function getRegistrationsForTournament(
-  tournamentId: string
-): Promise<TournamentRegistration[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_registrations")
-    .select("*")
-    .eq("tournament_id", tournamentId)
-    .neq("status", "cancelled")
-    .order("created_at", { ascending: true });
-  return (data as RegistrationRow[] | null)?.map(fromRow) ?? [];
-}
+/** Active entries, oldest first. Staff get the full rows; everyone else gets
+ * the entry list with private fields blank. */
+export const getRegistrationsForTournament = cache(async (tournamentId: string): Promise<TournamentRegistration[]> => {
+  const docs = await apiMaybe<RegistrationDoc[]>(`/tournaments/${encodeURIComponent(tournamentId)}/registrations`).catch(
+    () => undefined // e.g. a static mock tournament id
+  );
+  return docs?.map(fromDoc) ?? [];
+});
 
 export async function getRegisteredPlayerIds(tournamentId: string): Promise<string[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_registrations")
-    .select("player_id")
-    .eq("tournament_id", tournamentId)
-    .neq("status", "cancelled");
-  return (data as { player_id: string }[] | null)?.map((r) => r.player_id) ?? [];
+  return (await getRegistrationsForTournament(tournamentId)).map((r) => r.playerId);
 }
 
-export async function getRegisteredCount(tournamentId: string): Promise<number> {
-  const admin = createSupabaseAdminClient();
-  const { count } = await admin
-    .from("tournament_registrations")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId)
-    .neq("status", "cancelled");
-  return count ?? 0;
-}
-
-export async function createRegistration(input: {
-  clubId: string;
-  tournamentId: string;
-  playerId: string;
-  emergencyContact: string;
-  preferredCue: string;
-  notes: string;
-  agreedToRules: boolean;
-  status: TournamentRegistration["status"];
-}): Promise<TournamentRegistration> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("tournament_registrations")
-    .insert({
-      registration_number: generateRegistrationNumber(input.tournamentId),
-      club_id: input.clubId,
-      tournament_id: input.tournamentId,
-      player_id: input.playerId,
-      status: input.status,
-      emergency_contact: input.emergencyContact,
-      preferred_cue: input.preferredCue,
-      notes: input.notes,
-      agreed_to_rules: input.agreedToRules,
-    })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not create registration.");
-  }
-
-  return fromRow(data as RegistrationRow);
-}
+/** Active registrations for any tournament id — including the static catalog's
+ * ("t-1"), which the registration list above can't resolve. */
+export const getRegisteredCount = cache(async (tournamentId: string): Promise<number> => {
+  const result = await apiMaybe<{ count: number }>(
+    `/tournaments/${encodeURIComponent(tournamentId)}/registered-count`,
+    { auth: false }
+  ).catch(() => undefined);
+  return result?.count ?? 0;
+});
 
 export async function updateRegistrationPaymentStatus(
+  clubId: string,
   registrationId: string,
-  paymentStatus: TournamentRegistration["paymentStatus"]
+  paymentStatus: "paid" | "pending"
 ): Promise<{ error?: string }> {
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from("tournament_registrations")
-    .update({ payment_status: paymentStatus })
-    .eq("id", registrationId);
-  return { error: error?.message };
+  try {
+    await api(`/clubs/${encodeURIComponent(clubId)}/registrations/${encodeURIComponent(registrationId)}/payment-status`, {
+      method: "PATCH",
+      body: { paymentStatus },
+    });
+    return {};
+  } catch (error) {
+    return { error: clubActionError(error, "Could not update payment status.") };
+  }
 }

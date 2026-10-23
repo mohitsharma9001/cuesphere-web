@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { clubPath } from "@/lib/club-path";
 import { PageHero } from "@/components/shared/page-hero";
 import { ProfileForm } from "@/features/profile/components/profile-form";
@@ -27,7 +27,7 @@ export default async function ProfilePage({
   const redirectTo =
     redirectParam && redirectParam.startsWith("/") ? redirectParam : clubPath(clubSlug, "/dashboard");
 
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   if (!profile) {
     redirect(clubPath(clubSlug));
   }

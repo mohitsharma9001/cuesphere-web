@@ -4,18 +4,21 @@ import { PlatformHeader } from "@/components/layout/platform-header";
 import { PlatformFooter } from "@/components/layout/platform-footer";
 import { PlayersBrowseClient, type PlayerDirectoryEntry } from "@/features/platform/components/players-browse-client";
 import { listAllPlayerProfiles, listFriendshipsForUser } from "@/services/friendship-service";
-import { getClubById } from "@/services/club-service";
+import { getClubsByIds } from "@/services/club-service";
 import { getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Player Directory" };
 
 export default async function PlayersDirectoryPage() {
   const session = await getSession();
-  const profiles = (await listAllPlayerProfiles()).filter((p) => p.fullName);
-  const friendships = session ? await listFriendshipsForUser(session.id) : [];
+  const [allProfiles, friendships] = await Promise.all([
+    listAllPlayerProfiles(),
+    session ? listFriendshipsForUser(session.id) : Promise.resolve([]),
+  ]);
+  const profiles = allProfiles.filter((p) => p.fullName);
 
-  const clubIds = Array.from(new Set(profiles.map((p) => p.primaryClubId).filter((id): id is string => !!id)));
-  const clubsById = new Map((await Promise.all(clubIds.map((id) => getClubById(id)))).filter((c) => c).map((c) => [c!.id, c!]));
+  // Every primary club in one request, not one per club.
+  const clubsById = await getClubsByIds(profiles.map((p) => p.primaryClubId));
 
   const entries: PlayerDirectoryEntry[] = profiles
     .filter((profile) => profile.userId !== session?.id)

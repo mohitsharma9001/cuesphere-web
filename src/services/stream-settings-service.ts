@@ -1,17 +1,55 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizeStreamSettings, type StreamSettings } from "@/types/stream";
+import { api, apiResult } from "@/lib/api/server";
+import { normalizeStreamSettings, type OverlayToggles, type StreamSettings } from "@/types/stream";
 
-/** Stream settings for a club; defaults if none are saved (or migration 0023 isn't applied yet). */
+const base = (clubId: string) => `/clubs/${clubId}/stream-settings`;
+
+/** Stream settings for a club; defaults if none are saved. */
 export async function getStreamSettings(clubId: string): Promise<StreamSettings> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("club_stream_settings").select("settings").eq("club_id", clubId).maybeSingle();
-  return normalizeStreamSettings(data?.settings);
+  try {
+    return normalizeStreamSettings(await api<StreamSettings>(base(clubId), { auth: false }));
+  } catch {
+    return normalizeStreamSettings(null);
+  }
 }
 
-export async function saveStreamSettings(clubId: string, settings: StreamSettings): Promise<{ error?: string }> {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin
-    .from("club_stream_settings")
-    .upsert({ club_id: clubId, settings, updated_at: new Date().toISOString() });
-  return { error: error?.message };
+// Each change is its own endpoint; the API validates and merges it into the saved settings.
+
+export async function saveYoutubeLink(clubId: string, table: number, url: string): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/youtube/${table}`, { method: "PUT", body: { url } });
+}
+
+export async function saveOverlayOptions(
+  clubId: string,
+  input: { accent: string; show: OverlayToggles }
+): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/overlay`, { method: "PUT", body: input });
+}
+
+export async function saveAdOptions(
+  clubId: string,
+  input: { enabled: boolean; secondsPerImage: number; onTv: boolean; onOverlay: boolean; afterMatch: boolean }
+): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/ads`, { method: "PUT", body: input });
+}
+
+function fileForm(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return form;
+}
+
+export async function addSponsorLogo(clubId: string, file: File): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/sponsor-logos`, { method: "POST", body: fileForm(file) });
+}
+
+export async function removeSponsorLogo(clubId: string, url: string): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/sponsor-logos`, { method: "DELETE", body: { url } });
+}
+
+export async function addAdImage(clubId: string, file: File): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/ads/images`, { method: "POST", body: fileForm(file) });
+}
+
+export async function removeAdImage(clubId: string, url: string): Promise<{ error?: string }> {
+  return apiResult(`${base(clubId)}/ads/images`, { method: "DELETE", body: { url } });
 }

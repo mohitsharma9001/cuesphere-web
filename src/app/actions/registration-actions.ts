@@ -2,13 +2,7 @@
 
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
-import { getProfileCompletion } from "@/types/player-profile";
-import { checkRegistrationEligibility, getTournamentBySlug } from "@/services/tournament-service";
-import { createRegistration } from "@/services/registration-service";
-import { recordOfflinePayment, recordOnlinePayment } from "@/services/payment-service";
-import { createNotification } from "@/services/notification-service";
-import { getClubBySlug, ensurePlayerMembership } from "@/services/club-service";
+import { api, ApiRequestError } from "@/lib/api/server";
 
 const registrationSchema = z.object({
   clubSlug: z.string().min(1),
@@ -22,76 +16,46 @@ const registrationSchema = z.object({
 
 export type RegisterForTournamentInput = z.infer<typeof registrationSchema>;
 
+type FailureCode = "incomplete_profile" | "closed" | "full" | "already_registered";
+const FAILURE_CODES: FailureCode[] = ["incomplete_profile", "closed", "full", "already_registered"];
+
+interface RegistrationResult {
+  registrationId: string;
+  registrationNumber: string;
+  paymentStatus: "pending" | "paid" | "failed";
+}
+
+/** One call to the API, which checks the profile and eligibility, joins the
+ * player to the club, records the registration and its payment, and sends the
+ * "Registration Successful" notification. */
 export async function registerForTournamentAction(input: RegisterForTournamentInput) {
   const parsed = registrationSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false as const, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const session = await getSession();
-  if (!session) {
+  if (!(await getSession())) {
     return { success: false as const, error: "You must be logged in to register.", code: "unauthenticated" as const };
   }
 
-  const club = await getClubBySlug(parsed.data.clubSlug);
-  if (!club) {
-    return { success: false as const, error: "Club not found." };
-  }
-
-  const profile = await getProfileByUserId(session.id);
-  const { isComplete } = getProfileCompletion(profile);
-  if (!profile || !isComplete) {
+  const { clubSlug, slug, ...form } = parsed.data;
+  try {
+    const result = await api<RegistrationResult>(`/clubs/${encodeURIComponent(clubSlug)}/registrations`, {
+      method: "POST",
+      body: { tournamentSlug: slug, ...form },
+    });
     return {
-      success: false as const,
-      error: "Please complete your profile before registering.",
-      code: "incomplete_profile" as const,
+      success: true as const,
+      registrationId: result.registrationId,
+      registrationNumber: result.registrationNumber,
+      paymentStatus: result.paymentStatus,
     };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not register.";
+    // The API puts the reason code in `errors.code` (see registration.controller).
+    const code = error instanceof ApiRequestError ? (error.body as { errors?: { code?: string } } | null)?.errors?.code : undefined;
+    return FAILURE_CODES.includes(code as FailureCode)
+      ? { success: false as const, error: message, code: code as FailureCode }
+      : { success: false as const, error: message };
   }
-
-  const tournament = getTournamentBySlug(parsed.data.slug);
-  if (!tournament) {
-    return { success: false as const, error: "Tournament not found." };
-  }
-
-  const eligibility = await checkRegistrationEligibility(tournament.id, profile.id);
-  if (!eligibility.ok) {
-    const messages: Record<typeof eligibility.reason, string> = {
-      closed: "Registration for this tournament is closed.",
-      full: "This tournament has reached its maximum player capacity.",
-      already_registered: "You are already registered for this tournament.",
-    };
-    return { success: false as const, error: messages[eligibility.reason], code: eligibility.reason };
-  }
-
-  await ensurePlayerMembership(club.id, session.id);
-
-  const registration = await createRegistration({
-    clubId: club.id,
-    tournamentId: tournament.id,
-    playerId: profile.id,
-    emergencyContact: parsed.data.emergencyContact,
-    preferredCue: parsed.data.preferredCue ?? "",
-    notes: parsed.data.notes ?? "",
-    agreedToRules: parsed.data.agreedToRules,
-    status: parsed.data.paymentMethod === "online" ? "confirmed" : "pending_approval",
-  });
-
-  const payment =
-    parsed.data.paymentMethod === "online"
-      ? await recordOnlinePayment(club.id, registration.id, tournament.entryFee)
-      : await recordOfflinePayment(club.id, registration.id, tournament.entryFee);
-
-  await createNotification(
-    club.id,
-    session.id,
-    "Registration Successful",
-    `Congratulations! You have successfully registered for ${tournament.name}. We look forward to seeing you at ${club.name}.`
-  );
-
-  return {
-    success: true as const,
-    registrationId: registration.id,
-    registrationNumber: registration.registrationNumber,
-    paymentStatus: payment.status,
-  };
 }

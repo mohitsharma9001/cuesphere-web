@@ -13,7 +13,7 @@ export function getTournamentBySlug(slug: string) {
 
 /**
  * Combines the tournament's seeded baseline (for demo visual richness) with
- * real registrations made through Supabase.
+ * real registrations stored in the CueSphere API.
  */
 export async function getLiveRegisteredCount(tournamentId: string): Promise<number> {
   const base = TOURNAMENTS.find((t) => t.id === tournamentId);

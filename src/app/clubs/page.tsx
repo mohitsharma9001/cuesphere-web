@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
-import { listClubs, listMembershipsForClub } from "@/services/club-service";
-import { listClubTournaments } from "@/services/club-tournament-service";
+import { listClubsWithCounts } from "@/services/club-service";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { PlatformFooter } from "@/components/layout/platform-footer";
 import { ClubsBrowseClient } from "@/features/platform/components/clubs-browse-client";
@@ -9,17 +8,8 @@ import { ClubsBrowseClient } from "@/features/platform/components/clubs-browse-c
 export const metadata: Metadata = { title: "Browse Clubs" };
 
 export default async function BrowseClubsPage() {
-  const approvedClubs = (await listClubs()).filter((club) => club.status === "approved");
-
-  const clubs = await Promise.all(
-    approvedClubs.map(async (club) => {
-      const [tournaments, members] = await Promise.all([
-        listClubTournaments(club.id),
-        listMembershipsForClub(club.id),
-      ]);
-      return { club, tournamentCount: tournaments.length, memberCount: members.length };
-    })
-  );
+  // Every club with its member and tournament counts, in one request.
+  const clubs = (await listClubsWithCounts()).filter(({ club }) => club.status === "approved");
 
   return (
     <div className="flex min-h-screen flex-col">

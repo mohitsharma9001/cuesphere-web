@@ -4,13 +4,13 @@ import { PageHero } from "@/components/shared/page-hero";
 import { TournamentsPageClient } from "@/features/tournaments/components/tournaments-page-client";
 import type { ListingStatusFilter } from "@/features/tournaments/components/tournaments-filter-sidebar";
 import { ClubTournamentsPageClient } from "@/features/club-admin/components/club-tournaments-page-client";
-import { getClubBySlug, getClubById, listMembershipsForUser } from "@/services/club-service";
+import { getClubBySlug, getClubsByIds, listMembershipsForUser } from "@/services/club-service";
 import {
   listClubTournaments,
   countRegisteredForClubTournament,
 } from "@/services/club-tournament-service";
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getRegistrationForPlayer } from "@/services/registration-service";
 import { listFriendUserIds, countFriendsRegistered } from "@/services/friendship-service";
 import type { Club } from "@/types/club";
@@ -51,21 +51,21 @@ export default async function TournamentsPage({
   if (!club) return null;
 
   const session = await getSession();
-  const profile = session ? await getProfileByUserId(session.id) : undefined;
-  const friendUserIds = session ? await listFriendUserIds(session.id) : [];
+  const [profile, friendUserIds, memberships] = await Promise.all([
+    session ? getMyProfile() : Promise.resolve(undefined),
+    session ? listFriendUserIds(session.id) : Promise.resolve([]),
+    session ? listMembershipsForUser(session.id) : Promise.resolve([]),
+  ]);
 
   // Base: the club being viewed (always public). Extended with every other
   // club the viewer is a member of, so a logged-in player can see all their
   // clubs' tournaments in one place.
   const clubsById = new Map<string, Club>([[club.id, club]]);
-  if (session) {
-    const memberships = await listMembershipsForUser(session.id);
-    const otherClubs = await Promise.all(
-      memberships.filter((m) => m.clubId !== club.id).map((m) => getClubById(m.clubId))
-    );
-    for (const otherClub of otherClubs) {
-      if (otherClub && otherClub.status === "approved") clubsById.set(otherClub.id, otherClub);
-    }
+  // The viewer's other clubs in one request.
+  const otherClubs = await getClubsByIds(memberships.filter((m) => m.clubId !== club.id).map((m) => m.clubId));
+  for (const m of memberships) {
+    const otherClub = otherClubs.get(m.clubId);
+    if (otherClub && otherClub.status === "approved") clubsById.set(otherClub.id, otherClub);
   }
   const clubs = Array.from(clubsById.values());
 

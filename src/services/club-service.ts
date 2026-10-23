@@ -1,109 +1,99 @@
 import { cache } from "react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Club, ClubMembership, ClubRole } from "@/types/club";
+import { api, apiMaybe } from "@/lib/api/server";
+import type { Club, ClubMembership } from "@/types/club";
+import type { PlayerProfile } from "@/types/player-profile";
+import { profileFromApi } from "@/services/profile-service";
 
-interface ClubRow {
-  id: string;
-  slug: string;
-  name: string;
-  tagline: string;
-  description: string;
-  logo_url: string;
-  primary_color: string;
-  secondary_color: string;
-  hero_banner_url: string;
-  address: string;
-  phone: string;
-  email: string;
-  google_maps_url: string;
-  state_code: string | null;
-  city_id: string | null;
-  social_links: Record<string, string>;
-  about_text: string;
-  rules_text: string;
-  membership_text: string;
-  privacy_policy_text: string;
-  status: Club["status"];
-  created_at: string;
-}
-
-interface MembershipRow {
-  id: string;
-  club_id: string;
-  user_id: string;
-  member_id: string;
-  role: ClubRole;
-  created_at: string;
-}
-
-function clubFromRow(row: ClubRow): Club {
+/** The API returns clubs and memberships already shaped like the frontend
+ * types (camelCase, `id`); these fill in defaults for older documents. */
+function toClub(raw: Club): Club {
   return {
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    tagline: row.tagline,
-    description: row.description ?? "",
-    logoUrl: row.logo_url,
-    primaryColor: row.primary_color,
-    secondaryColor: row.secondary_color,
-    heroBannerUrl: row.hero_banner_url,
-    address: row.address,
-    phone: row.phone,
-    email: row.email,
-    googleMapsUrl: row.google_maps_url,
-    stateCode: row.state_code ?? null,
-    cityId: row.city_id ?? null,
-    socialLinks: row.social_links ?? {},
-    aboutText: row.about_text ?? "",
-    rulesText: row.rules_text ?? "",
-    membershipText: row.membership_text ?? "",
-    privacyPolicyText: row.privacy_policy_text ?? "",
-    status: row.status,
-    createdAt: row.created_at,
+    ...raw,
+    description: raw.description ?? "",
+    stateCode: raw.stateCode ?? null,
+    cityId: raw.cityId ?? null,
+    socialLinks: raw.socialLinks ?? {},
+    aboutText: raw.aboutText ?? "",
+    rulesText: raw.rulesText ?? "",
+    membershipText: raw.membershipText ?? "",
+    privacyPolicyText: raw.privacyPolicyText ?? "",
   };
 }
 
-function membershipFromRow(row: MembershipRow): ClubMembership {
+function toMembership(raw: ClubMembership): ClubMembership {
   return {
-    id: row.id,
-    clubId: row.club_id,
-    userId: row.user_id,
-    memberId: row.member_id,
-    role: row.role,
-    createdAt: row.created_at,
+    id: raw.id,
+    clubId: raw.clubId,
+    userId: raw.userId,
+    memberId: raw.memberId ?? "",
+    role: raw.role,
+    createdAt: raw.createdAt,
   };
 }
+
+const clubPath = (idOrSlug: string) => `/clubs/${encodeURIComponent(idOrSlug)}`;
 
 /** Memoized per-request — called independently by ~2 dozen pages/actions
  * plus getClubViewer() on the same navigation; cache() collapses repeat
- * calls for the same slug into a single query. */
+ * calls for the same slug into a single request. */
 export const getClubBySlug = cache(async (slug: string): Promise<Club | undefined> => {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("clubs").select("*").eq("slug", slug).maybeSingle();
-  return data ? clubFromRow(data as ClubRow) : undefined;
+  if (!slug) return undefined;
+  const club = await apiMaybe<Club>(clubPath(slug));
+  return club ? toClub(club) : undefined;
 });
 
-export async function getClubById(id: string): Promise<Club | undefined> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("clubs").select("*").eq("id", id).maybeSingle();
-  return data ? clubFromRow(data as ClubRow) : undefined;
-}
+export const getClubById = cache(async (id: string): Promise<Club | undefined> => {
+  if (!id) return undefined;
+  const club = await apiMaybe<Club>(clubPath(id));
+  return club ? toClub(club) : undefined;
+});
 
+/** Approved clubs; platform admins get every club (pending and suspended too). */
 export async function listClubs(): Promise<Club[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("clubs").select("*").order("created_at", { ascending: false });
-  return (data as ClubRow[] | null)?.map(clubFromRow) ?? [];
+  return (await api<Club[]>("/clubs")).map(toClub);
 }
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+export interface ClubWithCounts {
+  club: Club;
+  memberCount: number;
+  tournamentCount: number;
 }
 
+type ClubWithCountsJSON = Club & { memberCount: number; tournamentCount: number };
+
+function withCounts({ memberCount, tournamentCount, ...club }: ClubWithCountsJSON): ClubWithCounts {
+  return { club: toClub(club as Club), memberCount, tournamentCount };
+}
+
+/** Like listClubs(), with each club's member and tournament counts — one
+ * request instead of two per club. */
+export async function listClubsWithCounts(): Promise<ClubWithCounts[]> {
+  return (await api<ClubWithCountsJSON[]>("/clubs", { query: { include: "counts" } })).map(withCounts);
+}
+
+/** These clubs (any status) with their counts, in one request. */
+export async function getClubsWithCountsByIds(ids: string[]): Promise<ClubWithCounts[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return [];
+  return (
+    await api<ClubWithCountsJSON[]>("/clubs", { query: { ids: unique.join(","), include: "counts" }, auth: false })
+  ).map(withCounts);
+}
+
+const fetchClubsByIds = cache(async (key: string): Promise<Club[]> =>
+  (await api<Club[]>("/clubs", { query: { ids: key }, auth: false })).map(toClub)
+);
+
+/** Clubs by id (any status), in one request instead of one per club. Missing ids are absent from the map. */
+export async function getClubsByIds(ids: (string | null | undefined)[]): Promise<Map<string, Club>> {
+  const key = [...new Set(ids.filter((id): id is string => !!id))].sort().join(",");
+  const clubs = key ? await fetchClubsByIds(key) : [];
+  return new Map(clubs.map((c) => [c.id, c]));
+}
+
+/** The signed-in user creates the club (pending approval) and becomes its
+ * club_admin. `ownerUserId` must be the signed-in user — the API takes the
+ * owner from the session. */
 export async function createClub(input: {
   name: string;
   tagline?: string;
@@ -111,86 +101,62 @@ export async function createClub(input: {
   cityId: string;
   ownerUserId: string;
 }): Promise<{ club: Club } | { error: string }> {
-  const baseSlug = slugify(input.name);
-  if (!baseSlug) return { error: "Enter a valid club name." };
-
-  const admin = createSupabaseAdminClient();
-
-  let slug = baseSlug;
-  for (let i = 0; i < 20; i++) {
-    const { data: existing } = await admin.from("clubs").select("id").eq("slug", slug).maybeSingle();
-    if (!existing) break;
-    slug = `${baseSlug}-${i + 2}`;
+  try {
+    const club = await api<Club>("/clubs", {
+      method: "POST",
+      body: { name: input.name, tagline: input.tagline, stateCode: input.stateCode, cityId: input.cityId },
+    });
+    return { club: toClub(club) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not create club." };
   }
-
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("clubs")
-    .insert({
-      slug,
-      name: input.name,
-      tagline: input.tagline ?? "",
-      state_code: input.stateCode,
-      city_id: input.cityId,
-      status: "pending",
-    })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    return { error: error?.message ?? "Could not create club." };
-  }
-
-  const club = clubFromRow(data as ClubRow);
-
-  const { error: membershipError } = await supabase.from("club_memberships").insert({
-    club_id: club.id,
-    user_id: input.ownerUserId,
-    role: "club_admin",
-  });
-
-  if (membershipError) {
-    return { error: membershipError.message };
-  }
-
-  return { club };
 }
 
-/** New clubs waiting for a platform admin to approve them. */
+/** New clubs waiting for a platform admin to approve them (platform admins only). */
 export async function countPendingClubs(): Promise<number> {
-  const admin = createSupabaseAdminClient();
-  const { count } = await admin.from("clubs").select("id", { count: "exact", head: true }).eq("status", "pending");
-  return count ?? 0;
+  try {
+    return (await api<{ count: number }>("/platform/clubs/pending-count")).count;
+  } catch {
+    return 0;
+  }
 }
 
-export async function isPlatformAdmin(userId: string): Promise<boolean> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return !!data;
-}
+/** Whether the signed-in user is a platform admin. The API only answers for
+ * the caller, so any other userId is treated as "no". */
+export const isPlatformAdmin = cache(async (userId: string): Promise<boolean> => {
+  try {
+    const me = await api<{ isPlatformAdmin: boolean; userId?: string }>("/platform/me");
+    return me.isPlatformAdmin && (!me.userId || me.userId === userId);
+  } catch {
+    return false;
+  }
+});
 
 export async function approveClub(clubId: string): Promise<void> {
-  const admin = createSupabaseAdminClient();
-  await admin.from("clubs").update({ status: "approved" }).eq("id", clubId);
+  await api(`/platform/clubs/${clubId}/approve`, { method: "POST" });
 }
 
 export async function rejectClub(clubId: string): Promise<void> {
-  const admin = createSupabaseAdminClient();
-  await admin.from("clubs").delete().eq("id", clubId);
+  await api(`/platform/clubs/${clubId}/reject`, { method: "POST" });
 }
 
+/** The club owner's account email, for the platform admin's approval queue. */
+export async function getClubOwnerEmail(clubId: string): Promise<string | undefined> {
+  try {
+    return (await api<{ email: string | null }>(`/platform/clubs/${clubId}/owner`)).email ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Club settings (staff). Logo and cover images are uploaded separately
+ * (uploadClubImage) — the API sets those URLs itself. */
 export async function updateClub(
   clubId: string,
   input: {
     name?: string;
     tagline?: string;
     description?: string;
-    logoUrl?: string;
-    heroBannerUrl?: string;
     address?: string;
     phone?: string;
     email?: string;
@@ -204,82 +170,48 @@ export async function updateClub(
     privacyPolicyText?: string;
   }
 ): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("clubs")
-    .update({
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.tagline !== undefined ? { tagline: input.tagline } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.logoUrl !== undefined ? { logo_url: input.logoUrl } : {}),
-      ...(input.heroBannerUrl !== undefined ? { hero_banner_url: input.heroBannerUrl } : {}),
-      ...(input.address !== undefined ? { address: input.address } : {}),
-      ...(input.phone !== undefined ? { phone: input.phone } : {}),
-      ...(input.email !== undefined ? { email: input.email } : {}),
-      ...(input.googleMapsUrl !== undefined ? { google_maps_url: input.googleMapsUrl } : {}),
-      ...(input.stateCode !== undefined ? { state_code: input.stateCode } : {}),
-      ...(input.cityId !== undefined ? { city_id: input.cityId } : {}),
-      ...(input.socialLinks !== undefined ? { social_links: input.socialLinks } : {}),
-      ...(input.aboutText !== undefined ? { about_text: input.aboutText } : {}),
-      ...(input.rulesText !== undefined ? { rules_text: input.rulesText } : {}),
-      ...(input.membershipText !== undefined ? { membership_text: input.membershipText } : {}),
-      ...(input.privacyPolicyText !== undefined ? { privacy_policy_text: input.privacyPolicyText } : {}),
-    })
-    .eq("id", clubId)
-    .select("id");
-
-  if (error) {
-    throw new Error(error.message);
-  }
-  if (!data || data.length === 0) {
-    throw new Error(
-      "Update didn't apply — you may not have permission to edit this club (RLS blocked the write)."
-    );
-  }
+  await api(clubPath(clubId), { method: "PATCH", body: input });
 }
 
-export async function getMembership(clubId: string, userId: string): Promise<ClubMembership | undefined> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("club_memberships")
-    .select("*")
-    .eq("club_id", clubId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data ? membershipFromRow(data as MembershipRow) : undefined;
+/** Uploads a club logo or cover (multipart field "file"); returns the updated club. */
+export async function uploadClubImage(clubId: string, kind: "logo" | "cover", file: File): Promise<Club> {
+  const form = new FormData();
+  form.append("file", file);
+  return toClub(await api<Club>(`${clubPath(clubId)}/${kind}`, { method: "POST", body: form }));
 }
 
-export async function listMembershipsForUser(userId: string): Promise<ClubMembership[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("club_memberships").select("*").eq("user_id", userId);
-  return (data as MembershipRow[] | null)?.map(membershipFromRow) ?? [];
+export const getMembership = cache(async (clubId: string, userId: string): Promise<ClubMembership | undefined> => {
+  if (!clubId || !userId) return undefined;
+  const membership = await apiMaybe<ClubMembership | null>(`${clubPath(clubId)}/members/${userId}`, { auth: false });
+  return membership ? toMembership(membership) : undefined;
+});
+
+export const listMembershipsForUser = cache(async (userId: string): Promise<ClubMembership[]> => {
+  if (!userId) return [];
+  return (await api<ClubMembership[]>(`/clubs/memberships/by-user/${userId}`, { auth: false })).map(toMembership);
+});
+
+export const listMembershipsForClub = cache(async (clubId: string): Promise<ClubMembership[]> => {
+  return (await api<ClubMembership[]>(`${clubPath(clubId)}/members`, { auth: false })).map(toMembership);
+});
+
+/** Joins the club as a player (idempotent). The API joins the signed-in
+ * user, so `userId` must be the caller. */
+export async function ensurePlayerMembership(clubId: string, userId: string): Promise<ClubMembership> {
+  void userId;
+  return toMembership(await api<ClubMembership>(`${clubPath(clubId)}/join`, { method: "POST" }));
 }
 
-export async function listMembershipsForClub(clubId: string): Promise<ClubMembership[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("club_memberships").select("*").eq("club_id", clubId);
-  return (data as MembershipRow[] | null)?.map(membershipFromRow) ?? [];
+/** Every membership in the club with the member's public profile (or undefined), in one request. */
+export async function listMembersWithProfiles(
+  clubId: string
+): Promise<{ membership: ClubMembership; profile: PlayerProfile | undefined }[]> {
+  const rows = await api<(ClubMembership & { profile: Parameters<typeof profileFromApi>[0] | null })[]>(
+    `${clubPath(clubId)}/members`,
+    { query: { include: "profile" }, auth: false }
+  );
+  return rows.map(({ profile, ...membership }) => ({
+    membership: toMembership(membership as ClubMembership),
+    profile: profile ? profileFromApi(profile) : undefined,
+  }));
 }
-
-export async function ensurePlayerMembership(
-  clubId: string,
-  userId: string
-): Promise<ClubMembership> {
-  const existing = await getMembership(clubId, userId);
-  if (existing) return existing;
-
-  const supabase = await createSupabaseServerClient();
-  const memberId = `M-${Math.floor(1000 + Math.random() * 8999)}`;
-  const { data, error } = await supabase
-    .from("club_memberships")
-    .insert({ club_id: clubId, user_id: userId, member_id: memberId, role: "player" })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not join club.");
-  }
-
-  return membershipFromRow(data as MembershipRow);
-}
-

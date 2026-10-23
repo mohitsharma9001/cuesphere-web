@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getRegistrationById } from "@/services/registration-service";
 import { getPaymentForRegistration } from "@/services/payment-service";
 import { getPlayerCurrentMatch, getPlayerMatchHistory } from "@/services/match-service";
@@ -33,7 +33,7 @@ export default async function TournamentDashboardPage({
     );
   }
 
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   const registration = await getRegistrationById(registrationId);
 
   if (!profile || !registration || registration.playerId !== profile.id || registration.clubId !== club.id) {

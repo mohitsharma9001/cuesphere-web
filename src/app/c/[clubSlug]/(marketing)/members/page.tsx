@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ShieldCheck, Users } from "lucide-react";
 
-import { getClubBySlug, listMembershipsForClub } from "@/services/club-service";
-import { getProfileByUserIdForDisplay } from "@/services/profile-service";
+import { getClubBySlug, listMembersWithProfiles } from "@/services/club-service";
 import { PageHero } from "@/components/shared/page-hero";
 import { AvatarInitials } from "@/components/shared/avatar-initials";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -39,13 +38,8 @@ export default async function ClubMembersPage({
   const club = await getClubBySlug(clubSlug);
   if (!club) notFound();
 
-  const memberships = await listMembershipsForClub(club.id);
-  const members = await Promise.all(
-    memberships.map(async (membership) => ({
-      membership,
-      profile: await getProfileByUserIdForDisplay(membership.userId),
-    }))
-  );
+  // One request for every member and their profile (not one per member).
+  const members = await listMembersWithProfiles(club.id);
   members.sort((a, b) => (a.profile?.fullName ?? "").localeCompare(b.profile?.fullName ?? ""));
 
   return (

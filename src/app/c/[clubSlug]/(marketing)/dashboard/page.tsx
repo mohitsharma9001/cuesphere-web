@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { Trophy } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getRegistrationsForPlayer } from "@/services/registration-service";
 import { getClubBySlug } from "@/services/club-service";
 import { clubPath } from "@/lib/club-path";
@@ -27,7 +27,7 @@ export default async function DashboardPage({
     redirect(`${clubPath(clubSlug, "/login")}?redirect=${encodeURIComponent(clubPath(clubSlug, "/dashboard"))}`);
   }
 
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   const registrations = profile ? await getRegistrationsForPlayer(profile.id, club.id) : [];
 
   if (registrations.length > 0) {

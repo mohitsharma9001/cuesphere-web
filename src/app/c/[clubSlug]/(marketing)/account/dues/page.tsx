@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { clubPath } from "@/lib/club-path";
 import { getClubBySlug } from "@/services/club-service";
-import { getProfileByUserId } from "@/services/profile-service";
 import { getPlayerDues } from "@/services/table-service";
 import { formatDuration, formatRupees, PAYMENT_LABELS, type OutstandingCharge } from "@/types/tables";
 
@@ -51,7 +51,7 @@ export default async function MyDuesPage({ params }: { params: Promise<{ clubSlu
   if (!club) notFound();
   const session = await getSession();
   if (!session) redirect(`${clubPath(clubSlug, "/login")}?redirect=${encodeURIComponent(clubPath(clubSlug, "/account/dues"))}`);
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   const { due, paid } = profile ? await getPlayerDues(club.id, profile.id) : { due: [], paid: [] };
   const total = due.reduce((t, c) => t + c.amount, 0);
 

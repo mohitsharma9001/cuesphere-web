@@ -3,9 +3,8 @@ import { redirect } from "next/navigation";
 import { Building2 } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { getClubById, listMembershipsForUser, listMembershipsForClub } from "@/services/club-service";
-import { listClubTournaments } from "@/services/club-tournament-service";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
+import { getClubsWithCountsByIds, listMembershipsForUser } from "@/services/club-service";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { PlatformFooter } from "@/components/layout/platform-footer";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -28,24 +27,15 @@ export default async function MyClubsPage() {
     redirect("/login?redirect=%2Fmy-clubs");
   }
 
-  const profile = await getProfileByUserId(session.id);
-  const memberships = await listMembershipsForUser(session.id);
-  const entries = await Promise.all(
-    memberships.map(async (membership) => {
-      const club = await getClubById(membership.clubId);
-      if (!club) return null;
-      const [tournaments, members] = await Promise.all([
-        listClubTournaments(club.id),
-        listMembershipsForClub(club.id),
-      ]);
-      return {
-        membership,
-        club,
-        tournamentCount: tournaments.length,
-        memberCount: members.length,
-      };
-    })
+  const [profile, memberships] = await Promise.all([getMyProfile(), listMembershipsForUser(session.id)]);
+  // Every club with its counts in one request, not three per club.
+  const clubs = new Map(
+    (await getClubsWithCountsByIds(memberships.map((m) => m.clubId))).map((entry) => [entry.club.id, entry])
   );
+  const entries = memberships.map((membership) => {
+    const entry = clubs.get(membership.clubId);
+    return entry ? { membership, ...entry } : null;
+  });
   const validClubs = entries.filter((e): e is NonNullable<typeof e> => e !== null);
 
   return (

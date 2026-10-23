@@ -3,8 +3,7 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Trophy, Radio, Users, ArrowRight } from "lucide-react";
 
-import { listClubs, listMembershipsForUser, listMembershipsForClub, getClubById } from "@/services/club-service";
-import { listClubTournaments } from "@/services/club-tournament-service";
+import { listClubsWithCounts, listMembershipsForUser, getClubById } from "@/services/club-service";
 import { getSession } from "@/lib/auth/session";
 import { clubPath } from "@/lib/club-path";
 import { PlatformHeader } from "@/components/layout/platform-header";
@@ -17,6 +16,9 @@ import { Reveal, RevealGroup, RevealItem } from "@/components/shared/reveal";
 export const metadata: Metadata = { title: "CueSphere — The Complete Operating System for Snooker & Pool Clubs" };
 
 export default async function LandingPage() {
+  // Start loading the club list while we check whether to redirect a club owner.
+  const clubsPromise = listClubsWithCounts();
+  clubsPromise.catch(() => {}); // unused if we redirect; any error resurfaces below
   const session = await getSession();
   if (session) {
     const memberships = await listMembershipsForUser(session.id);
@@ -27,16 +29,8 @@ export default async function LandingPage() {
     }
   }
 
-  const approvedClubs = (await listClubs()).filter((club) => club.status === "approved");
-  const clubs = await Promise.all(
-    approvedClubs.map(async (club) => {
-      const [tournaments, members] = await Promise.all([
-        listClubTournaments(club.id),
-        listMembershipsForClub(club.id),
-      ]);
-      return { club, tournamentCount: tournaments.length, memberCount: members.length };
-    })
-  );
+  // Every club with its member and tournament counts, in one request.
+  const clubs = (await clubsPromise).filter(({ club }) => club.status === "approved");
 
   return (
     <div className="flex min-h-screen flex-col">

@@ -12,7 +12,8 @@ import {
   countRegisteredForClubTournament,
 } from "@/services/club-tournament-service";
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId, getProfileById } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
+import { getProfilesByIds } from "@/services/profile-service";
 import { getRegistrationForPlayer, getRegistrationsForTournament } from "@/services/registration-service";
 import { getMatchesForTournament } from "@/services/match-service";
 import { ClubTournamentDetailHero } from "@/features/club-admin/components/club-tournament-detail-hero";
@@ -28,8 +29,8 @@ export async function generateMetadata({
     const tournament = getTournamentDetail(slug);
     return { title: tournament?.name ?? "Tournament" };
   }
-  const club = await getClubBySlug(clubSlug);
-  const tournament = club ? await getClubTournamentBySlug(club.id, slug) : undefined;
+  // Same arguments as the page's lookup, so the two share one request.
+  const tournament = await getClubTournamentBySlug(clubSlug, slug);
   return { title: tournament?.name ?? "Tournament" };
 }
 
@@ -64,29 +65,29 @@ export default async function TournamentDetailPage({
     );
   }
 
-  const club = await getClubBySlug(clubSlug);
+  // The tournament lookup takes the club slug, so it doesn't wait for the club.
+  const [club, tournament] = await Promise.all([getClubBySlug(clubSlug), getClubTournamentBySlug(clubSlug, slug)]);
   if (!club) notFound();
-
-  const tournament = await getClubTournamentBySlug(club.id, slug);
   if (!tournament) notFound();
 
   const session = await getSession();
-  const profile = session ? await getProfileByUserId(session.id) : undefined;
-  const membership = session ? await getMembership(club.id, session.id) : undefined;
-  const canManagePayments = isStaffRole(membership?.role) && !isScorekeeperOnly(membership?.role);
-  const [existingRegistration, registeredCount, registrations, matches] = await Promise.all([
-    profile ? getRegistrationForPlayer(tournament.id, profile.id) : Promise.resolve(undefined),
+  // Everything below is independent of everything else, so fetch it together.
+  const [profile, membership, registeredCount, registrations, matches] = await Promise.all([
+    session ? getMyProfile() : Promise.resolve(undefined),
+    session ? getMembership(club.id, session.id) : Promise.resolve(undefined),
     countRegisteredForClubTournament(tournament.id),
     getRegistrationsForTournament(tournament.id),
     getMatchesForTournament(tournament.id),
   ]);
+  const canManagePayments = isStaffRole(membership?.role) && !isScorekeeperOnly(membership?.role);
 
-  const players = await Promise.all(
-    registrations.map(async (r) => ({
-      registration: r,
-      profile: await getProfileById(r.playerId),
-    }))
-  );
+  // Every entrant's profile (plus the declared champion and runner-up) in one request.
+  const [existingRegistration, profilesById] = await Promise.all([
+    profile ? getRegistrationForPlayer(tournament.id, profile.id) : Promise.resolve(undefined),
+    getProfilesByIds([...registrations.map((r) => r.playerId), tournament.championId, tournament.runnerUpId]),
+  ]);
+
+  const players = registrations.map((r) => ({ registration: r, profile: profilesById.get(r.playerId) }));
 
   const hasStarted = !!tournament.startDate && new Date(tournament.startDate) <= new Date();
 
@@ -96,11 +97,9 @@ export default async function TournamentDetailPage({
   }
 
   const overrideResults = tournament.championId
-    ? await (async () => {
-        const [championProfile, runnerUpProfile] = await Promise.all([
-          getProfileById(tournament.championId as string),
-          tournament.runnerUpId ? getProfileById(tournament.runnerUpId) : Promise.resolve(undefined),
-        ]);
+    ? (() => {
+        const championProfile = profilesById.get(tournament.championId as string);
+        const runnerUpProfile = tournament.runnerUpId ? profilesById.get(tournament.runnerUpId) : undefined;
         if (!championProfile) return null;
         if (championProfile.profilePhotoUrl) playerPhotos[championProfile.id] = championProfile.profilePhotoUrl;
         if (runnerUpProfile?.profilePhotoUrl) playerPhotos[runnerUpProfile.id] = runnerUpProfile.profilePhotoUrl;

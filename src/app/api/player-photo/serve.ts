@@ -1,20 +1,20 @@
-import { getStoredProfilePhoto } from "@/services/profile-service";
+import { API_BASE } from "@/lib/api/config";
 
-/** Serves a player's stored photo as an image. With a version in the URL the
+/** Proxies a player's photo from the API (legacy inline photos are served there;
+ * uploaded photos redirect to their file). With a version in the URL the
  * response never changes, so browsers and the image optimizer cache it long-term. */
-export async function servePlayerPhoto(playerId: string, versioned: boolean): Promise<Response> {
-  const photo = await getStoredProfilePhoto(playerId);
-  if (!photo) return new Response(null, { status: 404 });
+export async function servePlayerPhoto(playerId: string, version?: string): Promise<Response> {
+  const path = `/profiles/${encodeURIComponent(playerId)}/photo${version ? `/${encodeURIComponent(version)}` : ""}`;
+  const res = await fetch(`${API_BASE}${path}`, { redirect: "manual", cache: "no-store" });
 
-  if (/^https?:\/\//.test(photo)) return Response.redirect(photo, 302);
+  const location = res.headers.get("location");
+  if (res.status >= 300 && res.status < 400 && location) return Response.redirect(location, 302);
+  if (!res.ok) return new Response(null, { status: 404 });
 
-  const match = /^data:([^;,]+);base64,(.*)$/.exec(photo);
-  if (!match) return new Response(null, { status: 404 });
-
-  return new Response(Buffer.from(match[2], "base64"), {
+  return new Response(res.body, {
     headers: {
-      "Content-Type": match[1],
-      "Cache-Control": versioned ? "public, max-age=31536000, immutable" : "public, max-age=300",
+      "Content-Type": res.headers.get("content-type") ?? "image/jpeg",
+      "Cache-Control": version ? "public, max-age=31536000, immutable" : "public, max-age=300",
     },
   });
 }

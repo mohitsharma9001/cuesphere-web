@@ -8,13 +8,7 @@ import { isScorekeeperOnly } from "@/types/club";
 import { LinkButton } from "@/components/shared/link-button";
 import { TablesBoard } from "@/features/tables/components/tables-board";
 import { TableSetup } from "@/features/tables/components/table-setup";
-import {
-  getDaySummary,
-  listClubTables,
-  listOpenSessions,
-  listOutstanding,
-  listUpcomingBookings,
-} from "@/services/table-service";
+import { getTablesOverview } from "@/services/table-service";
 
 export const metadata: Metadata = { title: "Tables" };
 
@@ -26,13 +20,7 @@ export default async function ClubTablesPage({ params }: { params: Promise<{ clu
   if (isScorekeeperOnly(clubViewer.membership?.role)) redirect(clubPath(clubSlug, "/admin/live"));
 
   const clubId = clubViewer.club.id;
-  const [tables, open, outstanding, bookings, summary] = await Promise.all([
-    listClubTables(clubId),
-    listOpenSessions(clubId),
-    listOutstanding(clubId),
-    listUpcomingBookings(clubId),
-    getDaySummary(clubId),
-  ]);
+  const { tables, open, outstanding, bookings, summary } = await getTablesOverview(clubId);
 
   return (
     <div className="space-y-6">

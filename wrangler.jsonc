@@ -18,8 +18,8 @@
       "service": "cuesphere"
     }
   ],
-  // Run the server next to the database (Supabase, AWS Mumbai), not next to
-  // the visitor: every page makes several database calls.
-  "placement": { "region": "aws:ap-south-1" },
+  // Run the server next to the CueSphere API (Render, Singapore), not next to
+  // the visitor: every page makes several API calls. Move this if the API moves.
+  "placement": { "region": "aws:ap-southeast-1" },
   "observability": { "enabled": true }
 }

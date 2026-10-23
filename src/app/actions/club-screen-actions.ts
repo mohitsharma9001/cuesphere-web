@@ -6,8 +6,16 @@ import { getSession } from "@/lib/auth/session";
 import { getClubBySlug, getMembership } from "@/services/club-service";
 import { isStaffRole } from "@/types/club";
 import { moveTvScreen, pairTvScreen, unpairTvScreen } from "@/services/tv-screen-service";
-import { getStreamSettings, saveStreamSettings } from "@/services/stream-settings-service";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  addAdImage,
+  addSponsorLogo,
+  getStreamSettings,
+  removeAdImage,
+  removeSponsorLogo,
+  saveAdOptions,
+  saveOverlayOptions,
+  saveYoutubeLink,
+} from "@/services/stream-settings-service";
 import { clubPath } from "@/lib/club-path";
 import {
   ACCENT_OPTIONS,
@@ -86,12 +94,7 @@ export async function saveYoutubeLinkAction(clubSlug: string, table: number, url
     return { success: false, error: "That doesn't look like a YouTube video or live link." };
   }
 
-  const settings = await getStreamSettings(check.club.id);
-  const youtubeUrls = { ...settings.youtubeUrls };
-  if (trimmed) youtubeUrls[String(table)] = trimmed;
-  else delete youtubeUrls[String(table)];
-
-  const { error } = await saveStreamSettings(check.club.id, { ...settings, youtubeUrls });
+  const { error } = await saveYoutubeLink(check.club.id, table, trimmed);
   if (error) return { success: false, error };
   return done(clubSlug);
 }
@@ -106,7 +109,6 @@ export async function saveOverlayOptionsAction(
     return { success: false, error: "Pick one of the accent colours." };
   }
 
-  const settings = await getStreamSettings(check.club.id);
   const show: OverlayToggles = {
     photos: !!input.show.photos,
     breakBalls: !!input.show.breakBalls,
@@ -115,12 +117,12 @@ export async function saveOverlayOptionsAction(
     frameBanner: !!input.show.frameBanner,
     reds: !!input.show.reds,
   };
-  const { error } = await saveStreamSettings(check.club.id, { ...settings, accent: input.accent, show });
+  const { error } = await saveOverlayOptions(check.club.id, { accent: input.accent, show });
   if (error) return { success: false, error };
   return done(clubSlug);
 }
 
-const LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpeg", "image/webp": "webp", "image/svg+xml": "svg" };
+const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 export async function uploadSponsorLogoAction(clubSlug: string, formData: FormData): Promise<Result> {
@@ -134,22 +136,10 @@ export async function uploadSponsorLogoAction(clubSlug: string, formData: FormDa
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { success: false, error: "No file provided." };
-  const ext = LOGO_TYPES[file.type];
-  if (!ext) return { success: false, error: "Upload a PNG, JPG, WEBP or SVG image." };
+  if (!LOGO_TYPES.has(file.type)) return { success: false, error: "Upload a PNG, JPG or WEBP image." };
   if (file.size > MAX_LOGO_BYTES) return { success: false, error: "Logo must be under 2MB." };
 
-  const admin = createSupabaseAdminClient();
-  const path = `${check.club.id}/sponsors/${Date.now()}.${ext}`;
-  const { error: uploadError } = await admin.storage
-    .from("club-logos")
-    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type });
-  if (uploadError) return { success: false, error: uploadError.message };
-
-  const { data } = admin.storage.from("club-logos").getPublicUrl(path);
-  const { error } = await saveStreamSettings(check.club.id, {
-    ...settings,
-    sponsorLogos: [...settings.sponsorLogos, data.publicUrl],
-  });
+  const { error } = await addSponsorLogo(check.club.id, file);
   if (error) return { success: false, error };
   return done(clubSlug);
 }
@@ -158,21 +148,8 @@ export async function removeSponsorLogoAction(clubSlug: string, url: string): Pr
   const check = await requireClubStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
 
-  const settings = await getStreamSettings(check.club.id);
-  if (!settings.sponsorLogos.includes(url)) return { success: false, error: "Logo not found." };
-
-  // Best effort: remove the stored file too if it's one of ours.
-  const marker = `/club-logos/${check.club.id}/sponsors/`;
-  const at = url.indexOf(marker);
-  if (at !== -1) {
-    const admin = createSupabaseAdminClient();
-    await admin.storage.from("club-logos").remove([url.slice(at + "/club-logos/".length)]);
-  }
-
-  const { error } = await saveStreamSettings(check.club.id, {
-    ...settings,
-    sponsorLogos: settings.sponsorLogos.filter((u) => u !== url),
-  });
+  // The API also deletes the stored file when it's one of ours.
+  const { error } = await removeSponsorLogo(check.club.id, url);
   if (error) return { success: false, error };
   return done(clubSlug);
 }
@@ -187,25 +164,19 @@ export async function saveAdOptionsAction(
     return { success: false, error: "Pick how long each ad shows." };
   }
 
-  const settings = await getStreamSettings(check.club.id);
-  const { error } = await saveStreamSettings(check.club.id, {
-    ...settings,
-    ads: {
-      ...settings.ads,
-      enabled: !!input.enabled,
-      secondsPerImage: input.secondsPerImage,
-      onTv: !!input.onTv,
-      onOverlay: !!input.onOverlay,
-      afterMatch: !!input.afterMatch,
-    },
+  const { error } = await saveAdOptions(check.club.id, {
+    enabled: !!input.enabled,
+    secondsPerImage: input.secondsPerImage,
+    onTv: !!input.onTv,
+    onOverlay: !!input.onOverlay,
+    afterMatch: !!input.afterMatch,
   });
   if (error) return { success: false, error };
   return done(clubSlug);
 }
 
-const AD_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpeg", "image/webp": "webp" };
+const AD_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_AD_BYTES = 5 * 1024 * 1024;
-const AD_BUCKET = "club-covers";
 
 export async function uploadAdImageAction(clubSlug: string, formData: FormData): Promise<Result> {
   const check = await requireClubStaff(clubSlug);
@@ -218,22 +189,10 @@ export async function uploadAdImageAction(clubSlug: string, formData: FormData):
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { success: false, error: "No file provided." };
-  const ext = AD_TYPES[file.type];
-  if (!ext) return { success: false, error: "Upload a PNG, JPG or WEBP image." };
+  if (!AD_TYPES.has(file.type)) return { success: false, error: "Upload a PNG, JPG or WEBP image." };
   if (file.size > MAX_AD_BYTES) return { success: false, error: "Ad images must be under 5MB." };
 
-  const admin = createSupabaseAdminClient();
-  const path = `${check.club.id}/ads/${Date.now()}.${ext}`;
-  const { error: uploadError } = await admin.storage
-    .from(AD_BUCKET)
-    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type });
-  if (uploadError) return { success: false, error: uploadError.message };
-
-  const { data } = admin.storage.from(AD_BUCKET).getPublicUrl(path);
-  const { error } = await saveStreamSettings(check.club.id, {
-    ...settings,
-    ads: { ...settings.ads, images: [...settings.ads.images, data.publicUrl] },
-  });
+  const { error } = await addAdImage(check.club.id, file);
   if (error) return { success: false, error };
   return done(clubSlug);
 }
@@ -242,21 +201,8 @@ export async function removeAdImageAction(clubSlug: string, url: string): Promis
   const check = await requireClubStaff(clubSlug);
   if (!check.ok) return { success: false, error: check.error };
 
-  const settings = await getStreamSettings(check.club.id);
-  if (!settings.ads.images.includes(url)) return { success: false, error: "Ad not found." };
-
-  // Best effort: remove the stored file too if it's one of ours.
-  const marker = `/${AD_BUCKET}/${check.club.id}/ads/`;
-  const at = url.indexOf(marker);
-  if (at !== -1) {
-    const admin = createSupabaseAdminClient();
-    await admin.storage.from(AD_BUCKET).remove([url.slice(at + AD_BUCKET.length + 2)]);
-  }
-
-  const { error } = await saveStreamSettings(check.club.id, {
-    ...settings,
-    ads: { ...settings.ads, images: settings.ads.images.filter((u) => u !== url) },
-  });
+  // The API also deletes the stored file when it's one of ours.
+  const { error } = await removeAdImage(check.club.id, url);
   if (error) return { success: false, error };
   return done(clubSlug);
 }

@@ -6,7 +6,7 @@ import { getClubBySlug, getMembership } from "@/services/club-service";
 import { getProfileById } from "@/services/profile-service";
 import { getStatsForPlayer, getAchievementsForPlayer } from "@/services/stats-service";
 import { getPlayerMatchHistoryForClub, getHighestBreaksForPlayer } from "@/services/match-service";
-import { getClubTournamentById } from "@/services/club-tournament-service";
+import { getClubTournamentsByIds } from "@/services/club-tournament-service";
 import { PageHero } from "@/components/shared/page-hero";
 import { AvatarInitials } from "@/components/shared/avatar-initials";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,10 +77,8 @@ export default async function PlayerProfilePage({
 }) {
   const { clubSlug, playerId } = await params;
 
-  const club = await getClubBySlug(clubSlug);
+  const [club, profile] = await Promise.all([getClubBySlug(clubSlug), getProfileById(playerId)]);
   if (!club) notFound();
-
-  const profile = await getProfileById(playerId);
   if (!profile) notFound();
 
   const membership = await getMembership(club.id, profile.userId);
@@ -97,13 +95,10 @@ export default async function PlayerProfilePage({
   ]);
   const canFollow = !!session && session.id !== profile.userId;
 
-  const tournamentsById = new Map<string, { name: string; slug: string }>();
-  // One lookup per distinct tournament, all at once rather than one after another.
-  const tournamentIds = [...new Set([...matchHistory, ...highestBreaks].map((m) => m.tournamentId))];
-  const tournaments = await Promise.all(tournamentIds.map((tid) => getClubTournamentById(tid)));
-  tournaments.forEach((tournament, i) => {
-    if (tournament) tournamentsById.set(tournamentIds[i], tournament);
-  });
+  // Every tournament in the history, in one request.
+  const tournamentsById: Map<string, { name: string; slug: string }> = await getClubTournamentsByIds(
+    [...matchHistory, ...highestBreaks].map((m) => m.tournamentId)
+  );
 
   const winRate = stats && stats.matchesPlayed > 0 ? Math.round((stats.wins / stats.matchesPlayed) * 100) : 0;
 

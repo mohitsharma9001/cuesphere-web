@@ -7,7 +7,7 @@ import { getClubViewer } from "@/lib/auth/get-club-viewer";
 import { getClubTournamentBySlug, countRegisteredForClubTournament } from "@/services/club-tournament-service";
 import { getRegistrationsForTournament } from "@/services/registration-service";
 import { getMatchesForTournament } from "@/services/match-service";
-import { getProfileById } from "@/services/profile-service";
+import { getProfilesByIds } from "@/services/profile-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -30,13 +30,15 @@ export default async function ManageTournamentPage({
   params: Promise<{ clubSlug: string; slug: string }>;
 }) {
   const { clubSlug, slug } = await params;
-  const clubViewer = await getClubViewer(clubSlug);
+  // The tournament lookup only needs the slugs, so it runs alongside the viewer check.
+  const [clubViewer, tournament] = await Promise.all([
+    getClubViewer(clubSlug),
+    getClubTournamentBySlug(clubSlug, slug),
+  ]);
   if (!clubViewer || !clubViewer.isStaff) notFound();
   if (isScorekeeperOnly(clubViewer.membership?.role)) {
     redirect(clubPath(clubSlug, "/admin/live"));
   }
-
-  const tournament = await getClubTournamentBySlug(clubViewer.club.id, slug);
   if (!tournament) notFound();
 
   const [registeredCount, registrations, matches, scorekeepers] = await Promise.all([
@@ -46,12 +48,9 @@ export default async function ManageTournamentPage({
     listScorekeepersForTournament(tournament.id),
   ]);
 
-  const players = await Promise.all(
-    registrations.map(async (r) => ({
-      registration: r,
-      profile: await getProfileById(r.playerId),
-    }))
-  );
+  // Every entrant's profile in one request.
+  const profilesById = await getProfilesByIds(registrations.map((r) => r.playerId));
+  const players = registrations.map((r) => ({ registration: r, profile: profilesById.get(r.playerId) }));
 
   return (
     <div className="space-y-8">

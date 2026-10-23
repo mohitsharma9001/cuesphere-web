@@ -8,14 +8,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { LinkButton } from "@/components/shared/link-button";
 import { Users } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { getProfileById, getProfileByUserIdForDisplay } from "@/services/profile-service";
+import { getProfilesByIds, getProfilesByUserIds } from "@/services/profile-service";
 import { listFollowedPlayerIds } from "@/services/follow-service";
 import { getFriendActivity } from "@/features/friends/friend-activity";
 import { FriendMatches } from "@/features/friends/components/friend-matches";
 import { FollowButton } from "@/features/friends/components/follow-button";
 import { PlayerAvatar } from "@/features/platform/components/players-browse-client";
 import { listFriendshipsForUser } from "@/services/friendship-service";
-import { getClubById } from "@/services/club-service";
+import { getClubsByIds } from "@/services/club-service";
 import { FriendsPageClient } from "@/features/platform/components/friends-page-client";
 import type { PlayerDirectoryEntry } from "@/features/platform/components/players-browse-client";
 
@@ -30,23 +30,27 @@ export default async function FriendsPage() {
     getFriendActivity(session.id),
     listFollowedPlayerIds(session.id),
   ]);
-  const followed = (await Promise.all(followedIds.map((id) => getProfileById(id)))).filter(
-    (p): p is NonNullable<typeof p> => !!p && !!p.fullName
-  );
+  // One request each for the followed players, the friends' profiles and their clubs.
+  const otherUserId = (f: (typeof friendships)[number]) => (f.requesterId === session.id ? f.recipientId : f.requesterId);
+  const [followedById, friendProfiles] = await Promise.all([
+    getProfilesByIds(followedIds),
+    getProfilesByUserIds(friendships.map(otherUserId)),
+  ]);
+  const followed = followedIds
+    .map((id) => followedById.get(id))
+    .filter((p): p is NonNullable<typeof p> => !!p && !!p.fullName);
+  const clubsById = await getClubsByIds([...friendProfiles.values()].map((p) => p.primaryClubId));
 
-  const entries = (
-    await Promise.all(
-      friendships.map(async (f) => {
-        const otherUserId = f.requesterId === session.id ? f.recipientId : f.requesterId;
-        const profile = await getProfileByUserIdForDisplay(otherUserId);
-        if (!profile) return null;
-        const relation: PlayerDirectoryEntry["relation"] =
-          f.status === "accepted" ? "friends" : f.requesterId === session.id ? "outgoing" : "incoming";
-        const primaryClub = profile.primaryClubId ? await getClubById(profile.primaryClubId) : undefined;
-        return { profile, relation, friendshipId: f.id, primaryClubName: primaryClub?.name };
-      })
-    )
-  ).filter((e): e is NonNullable<typeof e> => e !== null);
+  const entries = friendships
+    .map((f) => {
+      const profile = friendProfiles.get(otherUserId(f));
+      if (!profile) return null;
+      const relation: PlayerDirectoryEntry["relation"] =
+        f.status === "accepted" ? "friends" : f.requesterId === session.id ? "outgoing" : "incoming";
+      const primaryClub = profile.primaryClubId ? clubsById.get(profile.primaryClubId) : undefined;
+      return { profile, relation, friendshipId: f.id, primaryClubName: primaryClub?.name };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
 
   const friends = entries.filter((e) => e.relation === "friends");
   const incoming = entries.filter((e) => e.relation === "incoming");

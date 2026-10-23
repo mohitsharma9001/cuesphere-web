@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getProfileCompletion } from "@/types/player-profile";
 import { checkRegistrationEligibility, getTournamentBySlug } from "@/services/tournament-service";
 import { clubPath } from "@/lib/club-path";
@@ -33,7 +33,7 @@ export default async function TournamentRegisterPage({
     redirect(`${clubPath(clubSlug, "/login")}?redirect=${encodeURIComponent(redirectPath)}`);
   }
 
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   const { isComplete } = getProfileCompletion(profile);
   if (!profile || !isComplete) {
     redirect(`${clubPath(clubSlug, "/account/profile")}?redirect=${encodeURIComponent(redirectPath)}`);

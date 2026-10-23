@@ -8,7 +8,7 @@ import { PlatformFooter } from "@/components/layout/platform-footer";
 import { LinkButton } from "@/components/shared/link-button";
 import { PlayerAvatar, PlayerActions, type PlayerDirectoryEntry } from "@/features/platform/components/players-browse-client";
 import { getProfileById } from "@/services/profile-service";
-import { getClubById, listMembershipsForUser } from "@/services/club-service";
+import { getClubsByIds, listMembershipsForUser } from "@/services/club-service";
 import { getStatsForPlayerAllClubs } from "@/services/stats-service";
 import { getSession } from "@/lib/auth/session";
 import { listFriendshipsForUser } from "@/services/friendship-service";
@@ -47,24 +47,29 @@ export default async function PlayerProfilePage({
   params: Promise<{ playerId: string }>;
 }) {
   const { playerId } = await params;
-  const profile = await getProfileById(playerId);
+  // Everything keyed by the player id starts together with the profile lookup;
+  // only the memberships need the profile's user id.
+  const [profile, session, statsRows, liveNow, ranks, friendly] = await Promise.all([
+    getProfileById(playerId),
+    getSession(),
+    getStatsForPlayerAllClubs(playerId),
+    // Runs before we know the id is a real player — a bad id must still 404, not throw.
+    getPlayerLiveMatch(playerId).catch(() => null),
+    getPlayerRanks(playerId),
+    getFriendlyStats(playerId),
+  ]);
   if (!profile || !profile.fullName) notFound();
 
-  const session = await getSession();
-
-  const [memberships, statsRows, friendships, following, liveNow, ranks, friendly] = await Promise.all([
+  const [memberships, friendships, following] = await Promise.all([
     listMembershipsForUser(profile.userId),
-    getStatsForPlayerAllClubs(profile.id),
     session ? listFriendshipsForUser(session.id) : Promise.resolve([]),
     session ? isFollowingPlayer(session.id, profile.id) : Promise.resolve(false),
-    getPlayerLiveMatch(profile.id),
-    getPlayerRanks(profile.id),
-    getFriendlyStats(profile.id),
   ]);
 
-  const clubs = (
-    await Promise.all(memberships.map((m) => getClubById(m.clubId)))
-  ).filter((c): c is NonNullable<typeof c> => !!c && c.status === "approved");
+  const clubsById = await getClubsByIds(memberships.map((m) => m.clubId));
+  const clubs = memberships
+    .map((m) => clubsById.get(m.clubId))
+    .filter((c): c is NonNullable<typeof c> => !!c && c.status === "approved");
 
   const totals = statsRows.reduce(
     (acc, s) => ({

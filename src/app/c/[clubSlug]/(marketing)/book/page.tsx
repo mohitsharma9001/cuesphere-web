@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { clubPath } from "@/lib/club-path";
 import { getClubBySlug } from "@/services/club-service";
-import { getProfileByUserId } from "@/services/profile-service";
 import { listClubTables, listPlayerBookings } from "@/services/table-service";
 import { BookTableForm } from "@/features/tables/components/book-table-form";
 
@@ -17,7 +17,7 @@ export default async function BookTablePage({ params }: { params: Promise<{ club
 
   const session = await getSession();
   if (!session) redirect(`${clubPath(clubSlug, "/login")}?redirect=${encodeURIComponent(clubPath(clubSlug, "/book"))}`);
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
 
   const [tables, bookings] = await Promise.all([
     listClubTables(club.id),

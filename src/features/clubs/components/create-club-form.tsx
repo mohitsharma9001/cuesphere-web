@@ -28,14 +28,17 @@ export function CreateClubForm({
   isLoggedIn,
   states,
   cities,
+  initial,
 }: {
   isLoggedIn: boolean;
   states: IndianState[];
   cities: City[];
+  /** Prefill from the player's approved club request. */
+  initial?: { name: string; stateCode: string; cityId: string };
 }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [location, setLocation] = React.useState({ stateCode: "", cityId: "" });
+  const [location, setLocation] = React.useState({ stateCode: initial?.stateCode ?? "", cityId: initial?.cityId ?? "" });
   const [locationError, setLocationError] = React.useState<string>();
 
   const {
@@ -45,7 +48,7 @@ export function CreateClubForm({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", tagline: "", email: "", password: "" },
+    defaultValues: { name: initial?.name ?? "", tagline: "", email: "", password: "" },
   });
 
   async function onSubmit(values: FormValues) {

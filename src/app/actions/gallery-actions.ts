@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth/session";
 import { getClubBySlug, getMembership } from "@/services/club-service";
 import { isStaffRole, isScorekeeperOnly } from "@/types/club";
 import { addGalleryImage, deleteGalleryImage } from "@/services/gallery-service";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 async function requireGalleryManager(clubSlug: string) {
   const session = await getSession();
@@ -21,11 +20,7 @@ async function requireGalleryManager(clubSlug: string) {
   return { ok: true as const, club };
 }
 
-const ALLOWED_TYPES: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpeg",
-  "image/webp": "webp",
-};
+const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -38,8 +33,7 @@ export async function uploadGalleryImageAction(clubSlug: string, formData: FormD
     return { success: false as const, error: "No file provided." };
   }
 
-  const ext = ALLOWED_TYPES[file.type];
-  if (!ext) {
+  if (!ALLOWED_TYPES.has(file.type)) {
     return { success: false as const, error: "Upload a PNG, JPG or WEBP image." };
   }
   if (file.size > MAX_BYTES) {
@@ -48,20 +42,7 @@ export async function uploadGalleryImageAction(clubSlug: string, formData: FormD
 
   const caption = String(formData.get("caption") ?? "").trim();
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const admin = createSupabaseAdminClient();
-  const path = `${check.club.id}/${Date.now()}.${ext}`;
-
-  const { error: uploadError } = await admin.storage
-    .from("club-gallery")
-    .upload(path, buffer, { contentType: file.type });
-
-  if (uploadError) {
-    return { success: false as const, error: uploadError.message };
-  }
-
-  const { data } = admin.storage.from("club-gallery").getPublicUrl(path);
-  const { error } = await addGalleryImage(check.club.id, data.publicUrl, caption);
+  const { error } = await addGalleryImage(check.club.id, file, caption);
   if (error) return { success: false as const, error };
 
   return { success: true as const };

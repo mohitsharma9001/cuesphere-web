@@ -2,7 +2,6 @@
 
 import { getSession } from "@/lib/auth/session";
 import { signUp } from "@/services/auth-service";
-import { ensureProfileForUser } from "@/services/profile-service";
 import { createClub } from "@/services/club-service";
 import { validateClubLocation } from "@/services/location-service";
 
@@ -33,18 +32,12 @@ export async function createClubAction(input: {
       return { success: false as const, error: "Password must be at least 8 characters." };
     }
 
+    // Signs up and stores the session cookies, so the club is created as this
+    // new account (the API also creates their player profile).
     const signUpResult = await signUp(input.email, input.password);
     if ("error" in signUpResult) {
       return { success: false as const, error: signUpResult.error };
     }
-    if (signUpResult.needsEmailConfirmation) {
-      return {
-        success: false as const,
-        error: "Account created — check your email to confirm it, then create your club.",
-      };
-    }
-
-    await ensureProfileForUser(signUpResult.userId, signUpResult.email);
     ownerUserId = signUpResult.userId;
   }
 

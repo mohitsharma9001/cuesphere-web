@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { Trophy } from "lucide-react";
+import { ShieldCheck, Trophy } from "lucide-react";
 
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { LoginForm } from "@/features/auth/components/login-form";
@@ -64,6 +64,11 @@ export default async function PlatformLoginPage({
                 className="font-medium text-primary hover:underline"
               >
                 Create one
+              </Link>
+            </p>
+            <p className="mt-3 text-center text-sm text-muted-foreground">
+              <Link href="/admin/login" className="inline-flex items-center gap-1.5 font-medium hover:text-primary hover:underline">
+                <ShieldCheck className="size-4" /> Login as admin
               </Link>
             </p>
           </div>

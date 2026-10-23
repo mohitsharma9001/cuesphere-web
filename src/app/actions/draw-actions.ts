@@ -1,7 +1,6 @@
 "use server";
 
 import { getSession } from "@/lib/auth/session";
-import { getRegisteredPlayerIds } from "@/services/registration-service";
 import { publishDraw } from "@/services/match-service";
 
 /**
@@ -14,12 +13,10 @@ export async function publishDrawAction(clubId: string, tournamentId: string) {
     return { success: false as const, error: "You must be logged in." };
   }
 
-  const registeredPlayerIds = await getRegisteredPlayerIds(tournamentId);
-
-  if (registeredPlayerIds.length === 0) {
-    return { success: false as const, error: "No registered players to draw." };
+  try {
+    const matches = await publishDraw(clubId, tournamentId);
+    return { success: true as const, matchCount: matches.length };
+  } catch (err) {
+    return { success: false as const, error: err instanceof Error ? err.message : "Could not publish the draw." };
   }
-
-  const matches = await publishDraw(clubId, tournamentId, registeredPlayerIds);
-  return { success: true as const, matchCount: matches.length };
 }

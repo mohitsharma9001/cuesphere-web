@@ -7,7 +7,7 @@ import { NewClubHome } from "@/features/home/components/new-club-home";
 import { getClubBySlug, listMembershipsForClub } from "@/services/club-service";
 import { listClubTournaments, countRegisteredForClubTournament } from "@/services/club-tournament-service";
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getRegistrationForPlayer } from "@/services/registration-service";
 import { getPlayerDueTotal, getPublicTableStatus } from "@/services/table-service";
 import { DueBanner } from "@/features/tables/components/due-banner";
@@ -45,7 +45,7 @@ export default async function Home({
   if (!club) return null;
 
   const session = await getSession();
-  const profile = session ? await getProfileByUserId(session.id) : undefined;
+  const profile = session ? await getMyProfile() : undefined;
 
   const [tournaments, members, tableStatus, myDue] = await Promise.all([
     listClubTournaments(club.id),

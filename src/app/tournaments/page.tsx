@@ -10,7 +10,7 @@ import {
   countRegisteredForClubTournament,
 } from "@/services/club-tournament-service";
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { getRegistrationForPlayer } from "@/services/registration-service";
 import { listFriendUserIds, countFriendsRegistered } from "@/services/friendship-service";
 
@@ -29,7 +29,7 @@ export default async function PlatformTournamentsPage({
     : "upcoming";
 
   const session = await getSession();
-  const profile = session ? await getProfileByUserId(session.id) : undefined;
+  const profile = session ? await getMyProfile() : undefined;
   const friendUserIds = session ? await listFriendUserIds(session.id) : [];
 
   const clubs = (await listClubs()).filter((club) => club.status === "approved");

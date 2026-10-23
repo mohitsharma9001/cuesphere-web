@@ -4,7 +4,7 @@ import { Radio, Tv } from "lucide-react";
 
 import { getClubViewer } from "@/lib/auth/get-club-viewer";
 import { getScorableMatchesForClub } from "@/services/match-service";
-import { getClubTournamentById } from "@/services/club-tournament-service";
+import { getClubTournamentsByIds } from "@/services/club-tournament-service";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScorableMatchCard } from "@/features/club-admin/components/scorable-match-card";
 import { clubPath } from "@/lib/club-path";
@@ -22,12 +22,9 @@ export default async function AdminLiveScoringPage({
   if (!clubViewer || !clubViewer.isStaff) notFound();
 
   const matches = await getScorableMatchesForClub(clubViewer.club.id);
-  const withTournament = await Promise.all(
-    matches.map(async (match) => ({
-      match,
-      tournament: await getClubTournamentById(match.tournamentId),
-    }))
-  );
+  // Every tournament on the worklist in one request.
+  const tournaments = await getClubTournamentsByIds(matches.map((match) => match.tournamentId));
+  const withTournament = matches.map((match) => ({ match, tournament: tournaments.get(match.tournamentId) }));
   const live = withTournament.filter(({ match }) => match.status === "live");
   const upcoming = withTournament.filter(({ match }) => match.status !== "live");
 

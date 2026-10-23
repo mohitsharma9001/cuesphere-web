@@ -1,6 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getClubTournamentById } from "@/services/club-tournament-service";
-import { getClubById } from "@/services/club-service";
+import { cache } from "react";
+import { api } from "@/lib/api/server";
+import { clubActionResult } from "@/services/club-tournament-service";
 
 export interface ScorekeeperAssignment {
   tournamentId: string;
@@ -10,63 +10,56 @@ export interface ScorekeeperAssignment {
   clubSlug: string;
 }
 
-/** Returns this user's active tournament-scorekeeper assignment, or null if
- * they don't have one or the tournament they were assigned to has already
- * been marked completed — at which point their access simply stops working,
- * nothing needs to be revoked. */
-export async function getActiveScorekeeperAssignment(userId: string): Promise<ScorekeeperAssignment | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_scorekeepers")
-    .select("tournament_id, club_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!data) return null;
+/** The signed-in user's active tournament-scorekeeper assignment, or null if
+ * they don't have one or the tournament has been marked completed — at which
+ * point their access simply stops working, nothing needs to be revoked.
+ * `userId` must be the signed-in user (the API answers for the caller). */
+export const getActiveScorekeeperAssignment = cache(
+  async (_userId: string): Promise<ScorekeeperAssignment | null> => {
+    try {
+      return await api<ScorekeeperAssignment | null>("/scorekeepers/me");
+    } catch {
+      return null;
+    }
+  }
+);
 
-  const [tournament, club] = await Promise.all([
-    getClubTournamentById(data.tournament_id),
-    getClubById(data.club_id),
-  ]);
-  if (!tournament || !club || tournament.status === "completed") return null;
+/** Is the signed-in user (`userId`) the scorekeeper assigned to this tournament? */
+export const isTournamentScorekeeper = cache(async (_userId: string, tournamentId: string): Promise<boolean> => {
+  if (!tournamentId) return false;
+  try {
+    const { isScorekeeper } = await api<{ isScorekeeper: boolean }>(
+      `/scorekeepers/me/tournaments/${encodeURIComponent(tournamentId)}`
+    );
+    return isScorekeeper;
+  } catch {
+    return false;
+  }
+});
 
-  return {
-    tournamentId: tournament.id,
-    tournamentSlug: tournament.slug,
-    tournamentName: tournament.name,
-    clubId: club.id,
-    clubSlug: club.slug,
-  };
-}
-
-/** Is this user specifically the scorekeeper assigned to this tournament? */
-export async function isTournamentScorekeeper(userId: string, tournamentId: string): Promise<boolean> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_scorekeepers")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("tournament_id", tournamentId)
-    .maybeSingle();
-  return !!data;
-}
-
+/** Club managers only. Also carries each scorekeeper's email and name. */
 export async function listScorekeepersForTournament(
   tournamentId: string
-): Promise<{ id: string; userId: string; createdAt: string }[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("tournament_scorekeepers")
-    .select("id, user_id, created_at")
-    .eq("tournament_id", tournamentId);
-  return (data ?? []).map((row) => ({ id: row.id, userId: row.user_id, createdAt: row.created_at }));
+): Promise<{ id: string; userId: string; createdAt: string; email: string; fullName: string }[]> {
+  try {
+    return await api(`/tournaments/${encodeURIComponent(tournamentId)}/scorekeepers`);
+  } catch {
+    return [];
+  }
 }
 
-export async function removeTournamentScorekeeper(id: string, clubId: string): Promise<{ error?: string }> {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin
-    .from("tournament_scorekeepers")
-    .delete()
-    .eq("id", id)
-    .eq("club_id", clubId);
-  return { error: error?.message };
+export async function removeTournamentScorekeeper(
+  clubId: string,
+  tournamentId: string,
+  id: string
+): Promise<{ error?: string }> {
+  const { error } = await clubActionResult(
+    () =>
+      api(
+        `/clubs/${encodeURIComponent(clubId)}/tournaments/${encodeURIComponent(tournamentId)}/scorekeepers/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      ),
+    "Could not remove the scorekeeper."
+  );
+  return { error };
 }

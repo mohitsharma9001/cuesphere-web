@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { loginAction } from "@/app/actions/auth-actions";
+import { adminLoginAction, loginAction } from "@/app/actions/auth-actions";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -20,7 +20,8 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function LoginForm({ redirectTo, clubSlug }: { redirectTo: string; clubSlug?: string }) {
+/** `admin` signs in through the admin check (non-admins are refused and signed out). */
+export function LoginForm({ redirectTo, clubSlug, admin }: { redirectTo: string; clubSlug?: string; admin?: boolean }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -35,7 +36,7 @@ export function LoginForm({ redirectTo, clubSlug }: { redirectTo: string; clubSl
 
   async function onSubmit(values: FormValues) {
     setIsSubmitting(true);
-    const result = await loginAction({ ...values, clubSlug });
+    const result = admin ? await adminLoginAction(values) : await loginAction({ ...values, clubSlug });
     setIsSubmitting(false);
 
     if (!result.success) {
@@ -64,7 +65,7 @@ export function LoginForm({ redirectTo, clubSlug }: { redirectTo: string; clubSl
       </div>
       <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
-        Login
+        {admin ? "Login as admin" : "Login"}
       </Button>
     </form>
   );

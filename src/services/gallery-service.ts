@@ -1,54 +1,20 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { api, apiResult } from "@/lib/api/server";
 import type { GalleryImage } from "@/types/gallery";
 
-interface GalleryImageRow {
-  id: string;
-  club_id: string;
-  image_url: string;
-  caption: string;
-  created_at: string;
-}
-
-function fromRow(row: GalleryImageRow): GalleryImage {
-  return {
-    id: row.id,
-    clubId: row.club_id,
-    imageUrl: row.image_url,
-    caption: row.caption,
-    createdAt: row.created_at,
-  };
-}
-
 export async function listGalleryImages(clubId: string): Promise<GalleryImage[]> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("club_gallery_images")
-    .select("*")
-    .eq("club_id", clubId)
-    .order("created_at", { ascending: false });
-  return (data as GalleryImageRow[] | null)?.map(fromRow) ?? [];
+  return api<GalleryImage[]>(`/clubs/${clubId}/gallery`, { auth: false });
 }
 
-export async function addGalleryImage(
-  clubId: string,
-  imageUrl: string,
-  caption: string
-): Promise<{ error?: string }> {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin.from("club_gallery_images").insert({
-    club_id: clubId,
-    image_url: imageUrl,
-    caption,
-  });
-  return { error: error?.message };
+/** Uploads an image (multipart "file") with an optional caption; the API stores the file. */
+export async function addGalleryImage(clubId: string, file: File, caption: string): Promise<{ error?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("caption", caption);
+  const { error } = await apiResult(`/clubs/${clubId}/gallery`, { method: "POST", body: form });
+  return { error };
 }
 
 export async function deleteGalleryImage(imageId: string, clubId: string): Promise<{ error?: string }> {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin
-    .from("club_gallery_images")
-    .delete()
-    .eq("id", imageId)
-    .eq("club_id", clubId);
-  return { error: error?.message };
+  const { error } = await apiResult(`/clubs/${clubId}/gallery/${imageId}`, { method: "DELETE" });
+  return { error };
 }

@@ -1,34 +1,40 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { isPlatformAdmin, listClubs, listMembershipsForClub } from "@/services/club-service";
+import { getClubOwnerEmail, isPlatformAdmin, listClubs } from "@/services/club-service";
 import { listCities, listStates } from "@/services/location-service";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PendingClubCard } from "@/features/platform-admin/components/pending-club-card";
+import { PendingEnquiryCard } from "@/features/platform-admin/components/pending-enquiry-card";
+import { listClubEnquiries } from "@/services/club-enquiry-service";
 
 export const metadata: Metadata = { title: "Platform Admin" };
 
 export default async function PlatformAdminPage() {
   const session = await getSession();
-  if (!session || !(await isPlatformAdmin(session.id))) {
-    notFound();
-  }
+  if (!session) redirect("/admin/login");
+  if (!(await isPlatformAdmin(session.id))) notFound();
 
-  const clubs = await listClubs();
+  const [clubs, enquiries, approvedEnquiries, rejectedEnquiries] = await Promise.all([
+    listClubs(),
+    listClubEnquiries("pending"),
+    listClubEnquiries("approved"),
+    listClubEnquiries("rejected"),
+  ]);
+  const reviewed = [...approvedEnquiries, ...rejectedEnquiries]
+    .sort((a, b) => String(b.reviewedAt ?? "").localeCompare(String(a.reviewedAt ?? "")))
+    .slice(0, 10);
   const pending = clubs.filter((club) => club.status === "pending");
   const approved = clubs.filter((club) => club.status === "approved");
 
   // Where each request is from and who sent it, to decide quickly.
   const [states, cities] = await Promise.all([listStates(), listCities()]);
-  const admin = createSupabaseAdminClient();
   const details = await Promise.all(
     pending.map(async (club) => {
-      const owner = (await listMembershipsForClub(club.id)).find((m) => m.role === "club_admin");
-      const email = owner ? (await admin.auth.admin.getUserById(owner.userId)).data.user?.email : undefined;
+      const email = await getClubOwnerEmail(club.id);
       const place = [cities.find((c) => c.id === club.cityId)?.name, states.find((s) => s.code === club.stateCode)?.name]
         .filter(Boolean)
         .join(", ");
@@ -47,8 +53,41 @@ export default async function PlatformAdminPage() {
           </p>
 
           <section className="mt-10">
+            <h2 className="font-heading text-lg font-semibold text-foreground">Club Requests ({enquiries.length})</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Players asking to open a club. Once you approve, they can create the club — which then appears below for a final approval.
+            </p>
+            <div className="mt-4 space-y-4">
+              {enquiries.length === 0 ? (
+                <EmptyState
+                  icon={<ShieldCheck className="size-6" />}
+                  title="No club requests"
+                  description="New requests from players show up here."
+                />
+              ) : (
+                enquiries.map((e) => <PendingEnquiryCard key={e.id} enquiry={e} />)
+              )}
+            </div>
+            {reviewed.length > 0 ? (
+              <div className="mt-6 space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">Recently reviewed</h3>
+                {reviewed.map((e) => (
+                  <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
+                    <span className="font-medium text-foreground">
+                      {e.clubName} <span className="font-normal text-muted-foreground">· {e.ownerName}</span>
+                    </span>
+                    <span className={e.status === "approved" ? "text-emerald-400" : "text-red-400"}>
+                      {e.status === "approved" ? (e.clubId ? "Approved · club created" : "Approved · not created yet") : `Rejected · ${e.rejectReason}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="mt-10">
             <h2 className="font-heading text-lg font-semibold text-foreground">
-              Pending Approval ({pending.length})
+              Clubs Pending Approval ({pending.length})
             </h2>
             <div className="mt-4 space-y-4">
               {pending.length === 0 ? (

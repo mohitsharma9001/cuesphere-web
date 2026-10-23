@@ -17,7 +17,7 @@ import { REQUIRED_PROFILE_FIELDS, type PlayerProfile } from "@/types/player-prof
 import { updateProfileAction } from "@/app/actions/profile-actions";
 
 const schema = z.object({
-  profilePhotoUrl: z.string().min(1, "Please add a profile photo."),
+  profilePhotoUrl: z.string(), // optional
   fullName: z.string().min(2, "Enter your full name."),
   mobile: z.string().min(8, "Enter a valid mobile number."),
   dob: z.string().min(1, "Date of birth is required."),

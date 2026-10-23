@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
-import { getProfileByUserId } from "@/services/profile-service";
+import { getMyProfile } from "@/lib/auth/get-viewer";
 import { PlatformHeader } from "@/components/layout/platform-header";
 import { PlatformFooter } from "@/components/layout/platform-footer";
 import { ProfileForm } from "@/features/profile/components/profile-form";
@@ -23,7 +23,7 @@ export default async function PlatformProfilePage({
   const { redirect: redirectParam } = await searchParams;
   const redirectTo = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
 
-  const profile = await getProfileByUserId(session.id);
+  const profile = await getMyProfile();
   if (!profile) redirect("/");
 
   return (

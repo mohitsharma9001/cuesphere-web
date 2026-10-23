@@ -4,9 +4,8 @@ import { Crown } from "lucide-react";
 
 import { getClubBySlug } from "@/services/club-service";
 import { listClubTournaments } from "@/services/club-tournament-service";
-import { getMatchesForTournament } from "@/services/match-service";
-import { getProfileById } from "@/services/profile-service";
-import { computeTournamentResults } from "@/lib/tournament-results";
+import { getTournamentResultsForIds } from "@/services/match-service";
+import { getProfilesByIds } from "@/services/profile-service";
 import { PageHero } from "@/components/shared/page-hero";
 import { AvatarInitials } from "@/components/shared/avatar-initials";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -36,29 +35,30 @@ export default async function HallOfFamePage({
   const tournaments = await listClubTournaments(club.id);
   const completed = tournaments.filter((t) => t.status === "completed");
 
-  const champions = await Promise.all(
-    completed.map(async (tournament) => {
-      if (tournament.championId) {
-        const [championProfile, runnerUpProfile] = await Promise.all([
-          getProfileById(tournament.championId),
-          tournament.runnerUpId ? getProfileById(tournament.runnerUpId) : Promise.resolve(undefined),
-        ]);
-        if (!championProfile) return null;
-        return {
-          tournament,
-          champion: { id: tournament.championId, name: championProfile.fullName },
-          runnerUp: runnerUpProfile ? { id: runnerUpProfile.id, name: runnerUpProfile.fullName } : null,
-          profile: championProfile,
-        };
-      }
-
-      const matches = await getMatchesForTournament(tournament.id);
-      const results = computeTournamentResults(matches);
-      if (!results.champion) return null;
-      const profile = await getProfileById(results.champion.id);
-      return { tournament, champion: results.champion, runnerUp: results.runnerUp, profile };
-    })
+  // Results for every completed tournament without a declared champion, then
+  // every profile we need — two requests in total, not two per tournament.
+  const results = await getTournamentResultsForIds(completed.filter((t) => !t.championId).map((t) => t.id));
+  const profilesById = await getProfilesByIds(
+    completed.flatMap((t) => (t.championId ? [t.championId, t.runnerUpId] : [results[t.id]?.champion?.id]))
   );
+
+  const champions = completed.map((tournament) => {
+    if (tournament.championId) {
+      const championProfile = profilesById.get(tournament.championId);
+      const runnerUpProfile = tournament.runnerUpId ? profilesById.get(tournament.runnerUpId) : undefined;
+      if (!championProfile) return null;
+      return {
+        tournament,
+        champion: { id: tournament.championId, name: championProfile.fullName },
+        runnerUp: runnerUpProfile ? { id: runnerUpProfile.id, name: runnerUpProfile.fullName } : null,
+        profile: championProfile,
+      };
+    }
+
+    const result = results[tournament.id];
+    if (!result?.champion) return null;
+    return { tournament, champion: result.champion, runnerUp: result.runnerUp, profile: profilesById.get(result.champion.id) };
+  });
   const entries = champions
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
     .sort((a, b) => (b.tournament.endDate ?? "").localeCompare(a.tournament.endDate ?? ""));

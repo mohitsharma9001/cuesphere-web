@@ -1,4 +1,4 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { api } from "@/lib/api/server";
 import { remember } from "@/lib/memo";
 
 export interface IndianState {
@@ -17,12 +17,7 @@ const TTL_MS = 5 * 60_000;
 
 /** All states, launch (active) states first. Rarely changes, so cached. */
 export async function listStates(): Promise<IndianState[]> {
-  return remember("locations:states", TTL_MS, async () => {
-    const admin = createSupabaseAdminClient();
-    const { data } = await admin.from("states").select("code, name, active").order("name");
-    const states = (data as IndianState[] | null) ?? [];
-    return [...states.filter((s) => s.active), ...states.filter((s) => !s.active)];
-  });
+  return remember("locations:states", TTL_MS, () => api<IndianState[]>("/locations/states", { auth: false }));
 }
 
 export async function listActiveStates(): Promise<IndianState[]> {
@@ -30,15 +25,7 @@ export async function listActiveStates(): Promise<IndianState[]> {
 }
 
 export async function listCities(): Promise<City[]> {
-  return remember("locations:cities", TTL_MS, async () => {
-    const admin = createSupabaseAdminClient();
-    const { data } = await admin.from("cities").select("id, state_code, name").order("name");
-    return ((data as { id: string; state_code: string; name: string }[] | null) ?? []).map((c) => ({
-      id: c.id,
-      stateCode: c.state_code,
-      name: c.name,
-    }));
-  });
+  return remember("locations:cities", TTL_MS, () => api<City[]>("/locations/cities", { auth: false }));
 }
 
 export async function listCitiesForState(stateCode: string): Promise<City[]> {
@@ -55,7 +42,8 @@ export async function getCityName(id: string | null | undefined): Promise<string
   return (await listCities()).find((c) => c.id === id)?.name;
 }
 
-/** Validates a club location pick: the state must be live and the city must be in it. */
+/** Validates a club location pick: the state must be live and the city must be in it.
+ * (The API checks again on save; this gives the form an early, friendly error.) */
 export async function validateClubLocation(
   stateCode: string,
   cityId: string
